@@ -17,6 +17,31 @@ body::before {
 	z-index: 0;
 }
 
+/* Advanced panel: scrollable on desktop */
+#panelAdvanced {
+	max-height: 320px;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(0, 217, 255, 0.3) transparent;
+}
+
+#panelAdvanced::-webkit-scrollbar {
+	width: 5px;
+}
+
+#panelAdvanced::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+#panelAdvanced::-webkit-scrollbar-thumb {
+	background: rgba(0, 217, 255, 0.3);
+	border-radius: 3px;
+}
+
+#panelAdvanced::-webkit-scrollbar-thumb:hover {
+	background: rgba(0, 217, 255, 0.5);
+}
+
 /* Advanced Options Popup */
 #advancedPopup {
 	animation: popupFadeIn 0.15s ease-out;
@@ -466,43 +491,732 @@ body::before {
 	background: rgba(0, 217, 255, 0.6);
 }
 
-/* Responsive */
+/* =============================================
+   MOBILE DRAWER - Hamburger button
+   ============================================= */
+.mobile-menu-btn {
+	display: none;
+}
+
+/* Drawer close bar - hidden on desktop */
+.drawer-close-bar {
+	display: none;
+}
+
+/* Config back button - hidden on desktop */
+.config-back-btn {
+	display: none !important;
+}
+
+/* Drawer overlay */
+.drawer-overlay {
+	display: none;
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	z-index: 90;
+	opacity: 0;
+	transition: opacity 0.3s ease;
+	pointer-events: none;
+}
+
+.drawer-overlay.active {
+	display: block;
+	opacity: 1;
+	pointer-events: auto;
+}
+
+/* Drawer slide-in animation */
+@keyframes drawerSlideIn {
+	from { transform: translateX(-100%); }
+	to { transform: translateX(0); }
+}
+
+@keyframes drawerSlideOut {
+	from { transform: translateX(0); }
+	to { transform: translateX(-100%); }
+}
+
+/* =============================================
+   RESPONSIVE - Tablet & Mobile (<=992px)
+   Aside becomes a slide-in drawer
+   ============================================= */
 @media (max-width: 992px) {
-	main {
-		flex-direction: column !important;
+	/* Show hamburger button */
+	.mobile-menu-btn {
+		display: flex;
 	}
-	
+
+	/* Aside becomes a fixed drawer */
 	aside {
-		width: 100% !important;
-		min-width: 100% !important;
-		max-height: 50vh;
-		border-right: none !important;
+		position: fixed !important;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		width: 85vw !important;
+		max-width: 380px !important;
+		min-width: 0 !important;
+		z-index: 100;
+		transform: translateX(-100%);
+		transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		border-right: 1px solid rgba(0, 217, 255, 0.3) !important;
+		overflow-y: auto !important;
+		box-shadow: none;
+		background: #0d1117 !important;
+	}
+
+	aside.drawer-open {
+		transform: translateX(0);
+		box-shadow: 4px 0 30px rgba(0, 0, 0, 0.6);
+	}
+
+	/* Drawer children: don't shrink, allow scroll */
+	aside > * {
+		flex-shrink: 0;
+	}
+
+	/* Show close bar inside drawer */
+	.drawer-close-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin: -1rem -1rem 0.5rem -1rem;
+		padding: 0.75rem 1rem;
+		background: #1c2128;
 		border-bottom: 1px solid rgba(0, 217, 255, 0.2);
 	}
-	
+
+	/* Section takes full width since aside is out of flow */
 	section {
-		min-height: 50vh;
+		width: 100% !important;
+		overflow: hidden !important;
+	}
+
+	/* Results container: scrollable both ways */
+	#results {
+		overflow-x: auto !important;
+		overflow-y: auto !important;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	/* Target panel: compact buttons on mobile */
+	#panelTarget {
+		padding: 0.5rem !important;
+	}
+
+	#panelTarget .mb-4 {
+		margin-bottom: 0.5rem !important;
+	}
+
+	#panelTarget .mb-4 label {
+		margin-bottom: 0.25rem !important;
+	}
+
+	#panelTarget input[type="url"] {
+		padding: 0.5rem 0.75rem !important;
+		font-size: 0.8rem !important;
+	}
+
+	#panelTarget #checkBtn {
+		padding-top: 0.5rem !important;
+		padding-bottom: 0.5rem !important;
+		margin-bottom: 0.5rem !important;
+		font-size: 0.75rem !important;
+	}
+
+	#panelTarget .grid {
+		gap: 0.35rem !important;
+	}
+
+	#panelTarget #detectWafBtn,
+	#panelTarget #httpManipulationBtn {
+		padding-top: 0.4rem !important;
+		padding-bottom: 0.4rem !important;
+		font-size: 0.65rem !important;
+		border-width: 1.5px !important;
+	}
+
+	#panelTarget #batchTestBtn {
+		padding-top: 0.4rem !important;
+		padding-bottom: 0.4rem !important;
+		font-size: 0.65rem !important;
+		margin-top: 0.35rem !important;
+		border-width: 1.5px !important;
+	}
+
+	/* Prevent body scroll when drawer is open */
+	body.drawer-is-open {
+		overflow: hidden !important;
+	}
+
+	/* Results table scrollable */
+	#results {
+		overflow-x: auto !important;
+	}
+
+	#results table {
+		min-width: 640px;
+	}
+
+	/* ---- Payload Config Modal → slide-in drawer from left ---- */
+	#testConfigModal .modal-dialog {
+		margin: 0 !important;
+		max-width: 90vw !important;
+		width: 90vw;
+		height: 100vh;
+	}
+
+	/* Override Bootstrap fade: slide from left */
+	#testConfigModal.modal.fade .modal-dialog {
+		transform: translateX(-100%);
+		transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	#testConfigModal.modal.show .modal-dialog {
+		transform: translateX(0);
+	}
+
+	#testConfigModal .modal-content {
+		height: 100vh;
+		border-radius: 0 0.75rem 0.75rem 0 !important;
+		display: flex;
+		flex-direction: column;
+	}
+
+	#testConfigModal .modal-header {
+		border-radius: 0 0.75rem 0 0 !important;
+		flex-shrink: 0;
+	}
+
+	#testConfigModal .modal-footer {
+		border-radius: 0 0 0.75rem 0 !important;
+		flex-shrink: 0;
+	}
+
+	/* Body: fill remaining space */
+	#testConfigModal .modal-body {
+		height: auto !important;
+		max-height: none !important;
+		flex: 1 1 0 !important;
+		min-height: 0 !important;
+		overflow: hidden !important;
+	}
+
+	/* Inner container */
+	#testConfigModal .modal-body > div {
+		flex-direction: column !important;
+		height: 100% !important;
+		overflow: hidden !important;
+	}
+
+	/* ===== MOBILE NAVIGATION: one screen at a time ===== */
+
+	/* Screen 1: Category list - full height (default) */
+	#testConfigModal .modal-body > div > .w-64 {
+		width: 100% !important;
+		min-width: 100% !important;
+		flex: 1 1 0 !important;
+		max-height: none !important;
+		border-right: none !important;
+		border-bottom: none !important;
+		overflow-y: auto !important;
+	}
+
+	/* Category list: unrestricted (has full panel now) */
+	#testConfigModal #configCategoryList {
+		max-height: none !important;
+		flex: 1 1 0 !important;
+		overflow-y: auto !important;
+	}
+
+	/* Screen 2: Editor - hidden by default */
+	#testConfigModal .modal-body > div > .flex-1 {
+		display: none !important;
+	}
+
+	/* When editing: swap screens */
+	#testConfigModal .modal-body > div.config-editing > .w-64 {
+		display: none !important;
+	}
+
+	#testConfigModal .modal-body > div.config-editing > .flex-1 {
+		display: flex !important;
+		flex: 1 1 0 !important;
+		min-height: 0 !important;
+		overflow: hidden !important;
+	}
+
+	/* Back button: visible on mobile */
+	.config-back-btn {
+		display: flex !important;
+	}
+
+	/* Editor welcome page: scrollable */
+	#testConfigModal #configEditorEmpty {
+		overflow-y: auto !important;
+	}
+
+	/* Payload panels: ensure scrollable */
+	#testConfigModal #panelAttackPayloads,
+	#testConfigModal #panelFalsePayloads {
+		overflow: hidden !important;
+	}
+
+	#testConfigModal #configAttackPayloads,
+	#testConfigModal #configFalsePayloads {
+		overflow-y: auto !important;
+	}
+
+	/* Editor header: allow wrapping */
+	#testConfigModal #configEditor > .p-4:first-child .flex.items-center.justify-between {
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
 }
 
-@media (max-width: 640px) {
-	.methods-grid {
-		display: grid !important;
-		grid-template-columns: repeat(2, 1fr);
+/* =============================================
+   RESPONSIVE - Phone landscape / small tablet (<=768px)
+   ============================================= */
+@media (max-width: 768px) {
+	/* Header: compact */
+	header {
+		padding-left: 0.5rem !important;
+		padding-right: 0.5rem !important;
+		gap: 0.25rem;
 	}
-	
-	#categoryCheckboxes {
+
+	header h1 {
+		font-size: 0.95rem !important;
+	}
+
+	/* Features grid on welcome placeholder */
+	.results-placeholder .grid-cols-2 {
 		grid-template-columns: 1fr !important;
 	}
-	
+
+	/* ===== RESULTS AREA ===== */
+	#results {
+		padding: 0.75rem !important;
+	}
+
+	/* Result banners: stack title + badges vertically */
+	#results > div > .flex.items-center.justify-between {
+		flex-direction: column !important;
+		align-items: flex-start !important;
+		gap: 0.5rem !important;
+	}
+
+	/* Status badge row: wrap on small screens */
+	#results .flex.items-center.gap-4.text-xs {
+		flex-wrap: wrap;
+		gap: 0.35rem !important;
+	}
+
+	/* Status badges: smaller */
+	#results .flex.items-center.gap-4.text-xs > span,
+	#results .flex.items-center.gap-4.text-xs > button {
+		font-size: 0.6rem !important;
+		padding: 0.2rem 0.5rem !important;
+	}
+
+	/* Banner icon: smaller */
+	#results .w-10.h-10 {
+		width: 2rem !important;
+		height: 2rem !important;
+	}
+
+	#results .w-10.h-10 svg {
+		width: 1rem !important;
+		height: 1rem !important;
+	}
+
+	/* Banner title text */
+	#results .text-sm.font-bold {
+		font-size: 0.75rem !important;
+	}
+
+	/* Explanation text block: compact */
+	#results > div > .mb-4.p-3 {
+		padding: 0.5rem !important;
+	}
+
+	#results > div > .mb-4.p-3 p {
+		font-size: 0.65rem !important;
+		line-height: 1.4 !important;
+	}
+
+	/* Summary card: compact */
+	#results > div > .bg-cyber-card.p-4 {
+		padding: 0.5rem !important;
+	}
+
+	#results > div > .bg-cyber-card.p-4 h4 {
+		font-size: 0.7rem !important;
+	}
+
+	#results > div > .bg-cyber-card.p-4 label {
+		padding: 0.35rem !important;
+		gap: 0.4rem !important;
+	}
+
+	#results > div > .bg-cyber-card.p-4 label span.text-sm {
+		font-size: 0.75rem !important;
+	}
+
+	/* Summary progress bars: narrower */
+	#results .max-w-\[200px\] {
+		max-width: 120px !important;
+	}
+
+	/* Table container: horizontal scroll */
+	#results .overflow-x-auto {
+		-webkit-overflow-scrolling: touch;
+	}
+
+	/* Table: more compact */
+	#results table th {
+		padding: 0.4rem 0.35rem !important;
+		font-size: 0.55rem !important;
+	}
+
+	#results table td {
+		padding: 0.3rem 0.35rem !important;
+		font-size: 0.7rem !important;
+	}
+
+	#results table code {
+		font-size: 0.55rem !important;
+		padding: 0.1rem 0.2rem !important;
+	}
+
+	/* Table: reduce min-width for smaller screens */
+	#results table {
+		min-width: 520px !important;
+	}
+
+	/* ===== PROGRESS BAR ===== */
+	#progressBar .px-6 {
+		padding-left: 0.75rem !important;
+		padding-right: 0.75rem !important;
+		padding-top: 0.5rem !important;
+		padding-bottom: 0.5rem !important;
+	}
+
+	#progressBar .text-2xl {
+		font-size: 1.1rem !important;
+	}
+
+	#progressBar .text-sm {
+		font-size: 0.7rem !important;
+	}
+
+	#progressBar .text-xs {
+		font-size: 0.6rem !important;
+	}
+
+	#progressBar .w-8 {
+		width: 1.5rem !important;
+		height: 1.5rem !important;
+	}
+
+	/* ===== EXPORT CONTROLS ===== */
+	#exportControls {
+		flex-wrap: wrap;
+		justify-content: center;
+		margin-left: 0.5rem !important;
+		margin-right: 0.5rem !important;
+	}
+
+	/* Batch modal: single column grid */
+	#batchModal .grid-cols-2 {
+		grid-template-columns: 1fr !important;
+	}
+
+	/* Analytics modal: reduce padding */
+	#analyticsModal > div > .relative {
+		max-width: 100% !important;
+		border-radius: 0.75rem;
+	}
+
+	#analyticsContent {
+		padding: 1rem !important;
+	}
+
+	/* HTTP codes modal */
+	#httpCodesModal .max-w-4xl {
+		max-width: 100% !important;
+	}
+
+	#httpCodesTableContent {
+		overflow-x: auto;
+	}
+
+	#httpCodesTableContent table {
+		min-width: 500px;
+	}
+}
+
+/* =============================================
+   RESPONSIVE - Phone portrait (<=640px)
+   ============================================= */
+@media (max-width: 640px) {
+	/* Header: very compact */
+	header {
+		height: auto !important;
+		min-height: 3rem;
+		padding-top: 0.4rem !important;
+		padding-bottom: 0.4rem !important;
+	}
+
+	header h1 {
+		font-size: 0.85rem !important;
+		white-space: nowrap;
+	}
+
+	/* Drawer: tighter padding */
+	aside {
+		padding: 0.75rem !important;
+		gap: 0.75rem !important;
+	}
+
+	.drawer-close-bar {
+		margin: -0.75rem -0.75rem 0.5rem -0.75rem;
+	}
+
+	/* Methods grid: 2 columns */
+	.methods-grid {
+		display: grid !important;
+		grid-template-columns: repeat(2, 1fr) !important;
+	}
+
+	/* Category checkboxes: single column */
+	#categoryCheckboxes {
+		grid-template-columns: 1fr !important;
+		max-height: 200px !important;
+	}
+
+	/* Buttons grid (Detect WAF / HTTP Tests) */
+	aside .grid-cols-2 {
+		grid-template-columns: 1fr !important;
+	}
+
+	/* Welcome placeholder: compact */
+	.results-placeholder .flex.items-center.gap-5 {
+		gap: 0.75rem !important;
+	}
+
+	.results-placeholder .w-16 {
+		width: 2.5rem !important;
+		height: 2.5rem !important;
+	}
+
+	.results-placeholder .w-16 svg {
+		width: 1.5rem !important;
+		height: 1.5rem !important;
+	}
+
+	.results-placeholder .text-2xl {
+		font-size: 1.25rem !important;
+	}
+
+	/* Results: extra compact on phone */
+	#results {
+		padding: 0.5rem !important;
+	}
+
+	/* Hide time column on very small screens */
+	#results table {
+		min-width: 420px !important;
+	}
+
+	#results table th {
+		padding: 0.3rem 0.25rem !important;
+		font-size: 0.5rem !important;
+	}
+
+	#results table td {
+		padding: 0.25rem 0.25rem !important;
+		font-size: 0.6rem !important;
+	}
+
+	#results table code {
+		font-size: 0.5rem !important;
+		padding: 0.05rem 0.15rem !important;
+	}
+
+	/* Method/status badges: tiny */
+	#results table .px-2 {
+		padding-left: 0.25rem !important;
+		padding-right: 0.25rem !important;
+	}
+
+	/* Banner: hide icon, compact */
+	#results .w-10.h-10,
+	#results .w-2.h-2 {
+		display: none !important;
+	}
+
+	/* Status badges: single line text */
+	#results .flex.items-center.gap-4.text-xs > span {
+		padding: 0.15rem 0.35rem !important;
+		font-size: 0.55rem !important;
+	}
+
+	/* Explanation text: even smaller */
+	#results > div > .mb-4.p-3 {
+		padding: 0.35rem !important;
+		margin-bottom: 0.5rem !important;
+	}
+
+	#results > div > .mb-4.p-3 p {
+		font-size: 0.6rem !important;
+	}
+
+	/* Export controls: wrap */
+	#exportControls {
+		flex-wrap: wrap;
+		justify-content: center;
+		padding: 0.35rem !important;
+		margin: 0 0.25rem 0.25rem 0.25rem !important;
+	}
+
+	/* Status bars: compact */
+	.status-bar {
+		font-size: 0.65rem;
+		height: 1.25rem;
+		line-height: 1.25rem;
+		padding-left: 0.4rem;
+	}
+
+	.min-width-112 {
+		min-width: 5rem;
+	}
+
+	/* Footer */
 	footer {
 		flex-wrap: wrap;
 		height: auto !important;
 		padding: 0.5rem;
 		gap: 0.25rem;
 	}
-	
+
 	footer .mx-2 {
 		display: none;
+	}
+
+	/* Config modal: full width on phone */
+	#testConfigModal .modal-dialog {
+		max-width: 100vw !important;
+		width: 100vw;
+	}
+
+	#testConfigModal .modal-content {
+		border-radius: 0 !important;
+	}
+
+	#testConfigModal .modal-header {
+		border-radius: 0 !important;
+		padding: 0.75rem 1rem !important;
+	}
+
+	#testConfigModal .modal-header .modal-title {
+		font-size: 0.85rem !important;
+	}
+
+	#testConfigModal .modal-footer {
+		border-radius: 0 !important;
+		padding: 0.5rem 0.75rem !important;
+	}
+
+	/* Config category list items: compact */
+	#configCategoryList button,
+	#configCategoryList > div {
+		font-size: 0.8rem !important;
+	}
+
+	/* Editor: compact header */
+	#testConfigModal #configEditor > .p-4:first-child {
+		padding: 0.5rem 0.75rem !important;
+	}
+
+	#testConfigModal #configCategoryName {
+		font-size: 0.9rem !important;
+	}
+
+	/* Payload tabs: compact */
+	#testConfigModal #tabAttackPayloads,
+	#testConfigModal #tabFalsePayloads {
+		padding: 0.5rem 0.5rem !important;
+		font-size: 0.7rem !important;
+		gap: 0.25rem !important;
+	}
+
+	#testConfigModal #tabAttackPayloads svg,
+	#testConfigModal #tabFalsePayloads svg {
+		width: 0.85rem !important;
+		height: 0.85rem !important;
+	}
+
+	/* Payload panels: compact padding */
+	#testConfigModal #panelAttackPayloads,
+	#testConfigModal #panelFalsePayloads {
+		padding: 0.5rem !important;
+	}
+
+	/* Payload editor inputs */
+	#configAttackPayloads input,
+	#configFalsePayloads input {
+		font-size: 0.75rem !important;
+		padding: 0.35rem 0.5rem !important;
+	}
+
+	/* Analytics grid */
+	#analyticsContent .grid-cols-2,
+	#analyticsContent .grid-cols-4 {
+		grid-template-columns: repeat(2, 1fr) !important;
+	}
+
+	#analyticsContent .grid-cols-3 {
+		grid-template-columns: 1fr !important;
+	}
+}
+
+/* =============================================
+   RESPONSIVE - Very small phone (<=400px)
+   ============================================= */
+@media (max-width: 400px) {
+	header h1 {
+		font-size: 0.75rem !important;
+	}
+
+	aside {
+		padding: 0.5rem !important;
+	}
+
+	.drawer-close-bar {
+		margin: -0.5rem -0.5rem 0.5rem -0.5rem;
+	}
+
+	#results {
+		padding: 0.5rem !important;
+	}
+
+	/* Summary bars: stack count label */
+	.min-width-112 {
+		min-width: 4rem;
+		font-size: 0.65rem;
+	}
+
+	/* Modals: edge to edge */
+	.fixed.inset-0 > .relative {
+		border-radius: 0.5rem !important;
+	}
+
+	/* Analytics: single column */
+	#analyticsContent .grid-cols-2,
+	#analyticsContent .grid-cols-4 {
+		grid-template-columns: 1fr !important;
 	}
 }

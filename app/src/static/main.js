@@ -743,6 +743,9 @@ function finalizeProgress() {
 }
 
 async function fetchResults() {
+	// Close mobile drawer if open
+	closeMobileDrawer();
+
 	const btn = document.getElementById('checkBtn');
 	btn.disabled = true;
 	const oldText = btn.textContent;
@@ -1108,6 +1111,9 @@ function restoreStateFromLocalStorage() {
 
 // WAF Detection functionality
 async function detectWAF() {
+	// Close mobile drawer if open
+	closeMobileDrawer();
+
 	const btn = document.getElementById('detectWafBtn');
 	const urlInput = document.getElementById('url');
 	const url = normalizeUrl(urlInput.value);
@@ -1147,6 +1153,10 @@ async function detectWAF() {
 
 function displayWAFDetectionResults(data) {
 	const resultsDiv = document.getElementById('results');
+	const det = data.detection || {};
+	const isBlocking = det.isActivelyBlocking === true;
+	const isDefaultSecurity = det.hasDefaultSecurity === true;
+	const infraName = det.infrastructure || null;
 	
 	let html = `<div class="bg-cyber-card border border-cyber-accent/30 rounded-xl overflow-hidden mb-4">
 		<div class="flex items-center gap-3 p-4 border-b border-cyber-accent/20 bg-cyber-accent/10">
@@ -1157,7 +1167,7 @@ function displayWAFDetectionResults(data) {
 			</div>
 			<div>
 				<h3 class="text-sm font-bold text-cyber-accent">WAF Detection Results</h3>
-				<p class="text-xs text-gray-400">Active fingerprinting analysis</p>
+				<p class="text-xs text-gray-400">Three-phase detection: passive + active + evasion confirmation</p>
 			</div>
 		</div>
 		
@@ -1165,64 +1175,130 @@ function displayWAFDetectionResults(data) {
 			<!-- Explanation Section -->
 			<div class="mb-4 p-3 bg-cyber-accent/5 border border-cyber-accent/20 rounded-lg">
 				<p class="text-xs text-gray-300 leading-relaxed mb-2">
-					<strong class="text-cyber-accent">How does WAF detection work?</strong> The detection uses multiple techniques:
+					<strong class="text-cyber-accent">How does detection work?</strong> Three phases are used to avoid false positives:
 				</p>
 				<ul class="text-xs text-gray-400 space-y-1 ml-4 list-disc">
-					<li><strong class="text-white">HTTP Headers</strong>: Analyzes response headers (Server, X-*, CF-*, etc.) for WAF signatures</li>
-					<li><strong class="text-white">Status Codes</strong>: Checks for typical WAF response codes (403, 406, 429)</li>
-					<li><strong class="text-white">Response Body</strong>: Searches for WAF-specific patterns and error messages</li>
-					<li><strong class="text-white">Cookies</strong>: Detects WAF-related cookies (e.g., Cloudflare, Imperva)</li>
-					<li><strong class="text-white">Active Probing</strong>: Sends test payloads (SQL Injection, XSS) and analyzes responses</li>
-					<li><strong class="text-white">Response Time</strong>: Some WAFs have characteristic response times</li>
+					<li><strong class="text-white">Phase 1 — Passive</strong>: A clean request identifies the CDN/infrastructure via response headers</li>
+					<li><strong class="text-white">Phase 2 — Active</strong>: Obvious attack payloads (SQLi, XSS, LFI) are sent and responses compared against the baseline</li>
+					<li><strong class="text-white">Phase 3 — Evasion</strong>: If probes are blocked, obfuscated payloads (comment injection, alternative syntax) are sent to distinguish default CDN security from active WAF rules</li>
 				</ul>
 				<p class="text-xs text-gray-400 mt-2 italic">
-					Detection confidence is calculated based on matching signatures. Higher confidence = more reliable detection.
+					A WAF is confirmed as "actively configured" only when evasion probes are also blocked, indicating custom rules beyond default CDN protection.
 				</p>
 			</div>`;
 
-	// Detection results
-	if (data.detection && data.detection.detected) {
-		html += `<div class="mb-4 p-4 bg-cyber-success/10 border border-cyber-success/30 rounded-lg">
-			<div class="flex items-center gap-3 mb-2">
-				<svg class="w-6 h-6 text-cyber-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-				</svg>
-				<div>
-					<h4 class="text-sm font-bold text-cyber-success">WAF Detected: ${escapeHtml(data.detection.wafType)}</h4>
-					<p class="text-xs text-gray-400">Confidence: <strong class="text-white">${data.detection.confidence}%</strong></p>
+	// Baseline vs Probe status indicator
+	if (det.baselineStatus !== undefined) {
+		const baseStatus = det.baselineStatus;
+		const prbStatus = det.probeStatus !== undefined ? det.probeStatus : baseStatus;
+		const statusChanged = baseStatus !== prbStatus;
+		
+		html += `<div class="mb-4 p-3 bg-cyber-bg/50 border border-gray-600/30 rounded-lg">
+			<p class="text-xs font-bold text-gray-300 mb-2">Request Comparison</p>
+			<div class="flex items-center gap-3 flex-wrap">
+				<div class="flex items-center gap-2">
+					<span class="text-xs text-gray-400">Clean request:</span>
+					<span class="px-2 py-0.5 rounded text-xs font-mono font-bold ${baseStatus < 400 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">${baseStatus}</span>
 				</div>
-			</div>`;
+				<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+				<div class="flex items-center gap-2">
+					<span class="text-xs text-gray-400">With payload:</span>
+					<span class="px-2 py-0.5 rounded text-xs font-mono font-bold ${prbStatus < 400 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">${prbStatus}</span>
+				</div>
+				${statusChanged 
+					? '<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">BLOCKED</span>' 
+					: '<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30">NOT BLOCKED</span>'}
+			</div>
+		</div>`;
+	}
 
-		if (data.detection.evidence && data.detection.evidence.length > 0) {
+	// Detection results — 4 possible states:
+	// 1. isBlocking: WAF with active rules (evasion probes also blocked) → RED
+	// 2. isDefaultSecurity: CDN default security only (evasion probes passed) → ORANGE
+	// 3. detected but not blocking: CDN present, nothing blocked → CYAN
+	// 4. not detected: no signatures found → GREEN
+	if (det.detected) {
+		if (isBlocking) {
+			// Case 1: Active WAF rules confirmed — RED alert
+			html += `<div class="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+				<div class="flex items-center gap-3 mb-2">
+					<svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+					</svg>
+					<div>
+						<h4 class="text-sm font-bold text-red-400">WAF Actively Blocking: ${escapeHtml(det.wafType)}</h4>
+						<p class="text-xs text-gray-400">Confidence: <strong class="text-white">${det.confidence}%</strong> — Active WAF rules confirmed (evasion probes also blocked)</p>
+					</div>
+				</div>`;
+			
+			if (infraName && infraName !== det.wafType) {
+				html += `<p class="text-xs text-gray-400 mb-2">Infrastructure: <strong class="text-cyan-400">${escapeHtml(infraName)}</strong> (CDN), blocking WAF: <strong class="text-red-400">${escapeHtml(det.wafType)}</strong></p>`;
+			}
+		} else if (isDefaultSecurity) {
+			// Case 2: CDN default security only — ORANGE/YELLOW alert
+			html += `<div class="mb-4 p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+				<div class="flex items-center gap-3 mb-2">
+					<svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+					</svg>
+					<div>
+						<h4 class="text-sm font-bold text-orange-400">CDN Default Security: ${escapeHtml(det.wafType)}</h4>
+						<p class="text-xs text-gray-400">Confidence: <strong class="text-white">${det.confidence}%</strong> — <strong class="text-orange-400">No active WAF rules</strong></p>
+					</div>
+				</div>
+				<p class="text-xs text-gray-400 mb-2">The target uses <strong class="text-orange-400">${escapeHtml(det.wafType)}</strong> as CDN/proxy. Obvious attack payloads are blocked by <strong>standard CDN protection</strong>, but evasion techniques pass through.</p>
+				<p class="text-xs text-gray-400 italic">This indicates default security settings — no custom WAF rules are configured. This is normal behavior for most CDN providers.</p>`;
+		} else {
+			// Case 3: CDN/infra detected but NOT blocking at all — CYAN/info
+			html += `<div class="mb-4 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+				<div class="flex items-center gap-3 mb-2">
+					<svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+					</svg>
+					<div>
+						<h4 class="text-sm font-bold text-cyan-400">CDN/Infrastructure Detected: ${escapeHtml(det.wafType)}</h4>
+						<p class="text-xs text-gray-400">Confidence: <strong class="text-white">${det.confidence}%</strong> — <strong class="text-green-400">Probes were NOT blocked</strong></p>
+					</div>
+				</div>
+				<p class="text-xs text-gray-400">The target uses <strong class="text-cyan-400">${escapeHtml(det.wafType)}</strong> as CDN/proxy, but neither basic nor advanced attack payloads are blocked.</p>`;
+		}
+
+		if (det.evidence && det.evidence.length > 0) {
 			html += `<div class="mt-3">
 				<p class="text-xs font-bold text-gray-300 mb-2">Evidence:</p>
 				<ul class="space-y-1">`;
-			data.detection.evidence.forEach((evidence) => {
-				html += `<li class="text-xs text-gray-400"><code class="bg-cyber-bg/50 px-2 py-0.5 rounded">${escapeHtml(evidence)}</code></li>`;
+			det.evidence.forEach((evidence) => {
+				const isInfra = evidence.includes('infrastructure') || evidence.includes('clean response') || evidence.includes('default') || evidence.includes('CDN');
+				const isEvasion = evidence.includes('vasion') || evidence.includes('passed through');
+				let codeClass = 'bg-cyber-bg/50 text-gray-300';
+				if (isEvasion) codeClass = 'bg-orange-900/30 text-orange-300';
+				else if (isInfra) codeClass = 'bg-cyan-900/30 text-cyan-300';
+				html += `<li class="text-xs text-gray-400"><code class="${codeClass} px-2 py-0.5 rounded">${escapeHtml(evidence)}</code></li>`;
 			});
 			html += `</ul></div>`;
 		}
 
-		if (data.detection.suggestedBypassTechniques && data.detection.suggestedBypassTechniques.length > 0) {
+		if (isBlocking && det.suggestedBypassTechniques && det.suggestedBypassTechniques.length > 0) {
 			html += `<div class="mt-3">
 				<p class="text-xs font-bold text-cyber-warning mb-2">Suggested Bypass Techniques:</p>
 				<ul class="space-y-1">`;
-			data.detection.suggestedBypassTechniques.forEach((technique) => {
-				html += `<li class="text-xs text-gray-400">• ${escapeHtml(technique)}</li>`;
+			det.suggestedBypassTechniques.forEach((technique) => {
+				html += `<li class="text-xs text-gray-400">&bull; ${escapeHtml(technique)}</li>`;
 			});
 			html += `</ul></div>`;
 		}
 		
 		html += `</div>`;
 	} else {
-		html += `<div class="mb-4 p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+		// Case 4: Nothing detected
+		html += `<div class="mb-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
 			<div class="flex items-center gap-3">
-				<svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+				<svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
 				</svg>
 				<div>
-					<p class="text-sm font-bold text-orange-400">No WAF detected</p>
-					<p class="text-xs text-gray-400">Low confidence or no WAF signatures found</p>
+					<p class="text-sm font-bold text-green-400">No WAF detected</p>
+					<p class="text-xs text-gray-400">No WAF/CDN signatures found and probes were not blocked</p>
 				</div>
 			</div>
 		</div>`;
@@ -1260,7 +1336,10 @@ function displayWAFDetectionResults(data) {
 	}
 
 	html += `</div></div>`;
-	resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+	resultsDiv.innerHTML = html;
+	// Hide export controls (not relevant for WAF detection)
+	const exportControls = document.getElementById('exportControls');
+	if (exportControls) exportControls.style.display = 'none';
 }
 
 function showWAFPanel(data) {
@@ -1270,23 +1349,45 @@ function showWAFPanel(data) {
 	if (!panel || !resultsDiv) return;
 
 	let html = '';
+	const det = data.detection;
 
-	if (data.detection && data.detection.detected) {
-		html = `<div class="d-flex align-items-center justify-content-between">
-			<div>
-				<strong>${data.detection.wafType}</strong> detected
-				<span class="badge bg-success ms-2">${data.detection.confidence}% confidence</span>
-			</div>
-			<small class="text-muted">Auto-detection enabled</small>
-		</div>`;
+	if (det && det.detected) {
+		if (det.isActivelyBlocking) {
+			// Active WAF — red badge
+			html = `<div class="d-flex align-items-center justify-content-between">
+				<div>
+					<strong>${det.wafType}</strong> detected
+					<span class="badge bg-danger ms-2">${det.confidence}% confidence</span>
+					<span class="badge bg-danger ms-1">WAF Active</span>
+				</div>
+			</div>`;
+			window.detectedWAF = det.wafType;
 
-		// Store detected WAF info for later use
-		window.detectedWAF = data.detection.wafType;
-
-		// Auto-enable advanced payloads if WAF detected
-		const advancedCheckbox = document.getElementById('useAdvancedPayloadsCheckbox');
-		if (advancedCheckbox) {
-			advancedCheckbox.checked = true;
+			// Auto-enable advanced payloads if active WAF detected
+			const advancedCheckbox = document.getElementById('useAdvancedPayloadsCheckbox');
+			if (advancedCheckbox) {
+				advancedCheckbox.checked = true;
+			}
+		} else if (det.hasDefaultSecurity) {
+			// Default CDN security — orange badge
+			html = `<div class="d-flex align-items-center justify-content-between">
+				<div>
+					<strong>${det.wafType}</strong> detected
+					<span class="badge bg-warning text-dark ms-2">${det.confidence}% confidence</span>
+					<span class="badge bg-warning text-dark ms-1">Default Security</span>
+				</div>
+			</div>`;
+			window.detectedWAF = null; // Not a real WAF
+		} else {
+			// CDN detected, not blocking — info badge
+			html = `<div class="d-flex align-items-center justify-content-between">
+				<div>
+					<strong>${det.wafType}</strong> detected
+					<span class="badge bg-info ms-2">${det.confidence}% confidence</span>
+					<span class="badge bg-info ms-1">CDN Only</span>
+				</div>
+			</div>`;
+			window.detectedWAF = null;
 		}
 	} else {
 		html = '<div>No WAF detected with high confidence</div>';
@@ -1325,6 +1426,9 @@ function clearWAFResults() {
 
 // HTTP Manipulation Testing
 async function testHTTPManipulation() {
+	// Close mobile drawer if open
+	closeMobileDrawer();
+
 	const btn = document.getElementById('httpManipulationBtn');
 	const urlInput = document.getElementById('url');
 	const url = normalizeUrl(urlInput.value);
@@ -1510,11 +1614,17 @@ function displayHTTPManipulationResults(data) {
 	}
 
 	html += '</div>';
-	resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+	resultsDiv.innerHTML = html;
+	// Hide export controls (not relevant for HTTP manipulation)
+	const exportControls = document.getElementById('exportControls');
+	if (exportControls) exportControls.style.display = 'none';
 }
 
 // HTTP Manipulation Testing functionality
 async function testHTTPManipulation() {
+	// Close mobile drawer if open
+	closeMobileDrawer();
+
 	const btn = document.getElementById('httpManipulationBtn');
 	const url = normalizeUrl(document.getElementById('url').value);
 
@@ -1624,6 +1734,38 @@ function initApp() {
 			}
 		});
 	}
+}
+
+// =============================================
+// Mobile Drawer (slide-in panel)
+// =============================================
+function toggleMobileDrawer() {
+	const aside = document.querySelector('aside');
+	const overlay = document.getElementById('drawerOverlay');
+	const isOpen = aside.classList.contains('drawer-open');
+	if (isOpen) {
+		closeMobileDrawer();
+	} else {
+		aside.classList.add('drawer-open');
+		overlay.classList.add('active');
+		document.body.classList.add('drawer-is-open');
+	}
+}
+
+function closeMobileDrawer() {
+	const aside = document.querySelector('aside');
+	const overlay = document.getElementById('drawerOverlay');
+	aside.classList.remove('drawer-open');
+	overlay.classList.remove('active');
+	document.body.classList.remove('drawer-is-open');
+}
+
+// Payload config: go back from editor to categories list (mobile)
+function configGoBack() {
+	const container = document.querySelector('#testConfigModal .modal-body > div');
+	if (container) container.classList.remove('config-editing');
+	// Update category list to reflect any changes
+	renderConfigCategoryList();
 }
 
 // Initialize the application when DOM is loaded
@@ -3333,6 +3475,10 @@ async function showTestConfigModal() {
 	}
 	
 	testConfigModal.show();
+
+	// Reset mobile navigation to categories list
+	const configContainer = document.querySelector('#testConfigModal .modal-body > div');
+	if (configContainer) configContainer.classList.remove('config-editing');
 	
 	// Show loading state
 	const categoryList = document.getElementById('configCategoryList');
@@ -3405,6 +3551,9 @@ function showEditorEmpty() {
 	currentEditingCategory = null;
 	document.getElementById('configEditorEmpty').style.display = 'flex';
 	document.getElementById('configEditor').style.display = 'none';
+	// Mobile: go back to categories list
+	const container = document.querySelector('#testConfigModal .modal-body > div');
+	if (container) container.classList.remove('config-editing');
 }
 
 // Switch between Attack and False Positive payload tabs
@@ -3448,6 +3597,10 @@ function selectCategory(categoryName, activeTab = 'attack') {
 	
 	document.getElementById('configEditorEmpty').style.display = 'none';
 	document.getElementById('configEditor').style.display = 'flex';
+
+	// Mobile: switch to editor screen
+	const container = document.querySelector('#testConfigModal .modal-body > div');
+	if (container) container.classList.add('config-editing');
 	
 	// Update category name input
 	document.getElementById('configCategoryName').value = categoryName;

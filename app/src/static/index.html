@@ -41,9 +41,26 @@
 		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 	</head>
 	<body class="bg-cyber-bg text-gray-100 font-sans h-screen flex flex-col overflow-hidden" data-theme="dark">
+		<!-- Legal Disclaimer Banner -->
+		<div id="disclaimerBanner" class="bg-cyber-warning/15 border-b border-cyber-warning/30 px-4 py-2 flex items-center justify-center gap-3 shrink-0 z-50 relative">
+			<svg class="w-4 h-4 text-cyber-warning shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+			</svg>
+			<p class="text-xs text-cyber-warning/90 text-center leading-snug"><strong class="text-cyber-warning">Disclaimer:</strong> Only use this tool on websites you own or have explicit authorization to test. Unauthorized testing may violate laws and regulations.</p>
+			<button onclick="document.getElementById('disclaimerBanner').remove()" class="absolute right-3 top-1/2 -translate-y-1/2 text-cyber-warning/60 hover:text-cyber-warning transition-colors" aria-label="Dismiss">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+			</button>
+		</div>
 		<!-- Header Bar -->
 		<header class="h-14 bg-gradient-to-b from-cyber-card to-cyber-bg-secondary border-b border-cyber-accent/20 flex items-center justify-between px-4 shrink-0 z-50">
-			<div class="w-48">
+			<div class="flex items-center gap-2">
+				<!-- Mobile menu button (visible <=992px) -->
+				<button type="button" onclick="toggleMobileDrawer()" id="mobileMenuBtn"
+						class="mobile-menu-btn items-center justify-center w-9 h-9 rounded-lg bg-cyber-elevated border border-cyber-accent/20 text-gray-400 hover:text-cyber-accent hover:border-cyber-accent transition-all shrink-0">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+					</svg>
+				</button>
 				<a href="https://github.com/papamica/waf-checker" target="_blank" rel="noopener" 
 				   class="inline-flex items-center gap-2 px-3 py-1.5 bg-cyber-elevated border border-cyber-accent/20 rounded-full text-gray-400 hover:text-cyber-accent hover:border-cyber-accent transition-all text-sm no-underline">
 					<svg class="w-4 h-4 fill-current" viewBox="0 0 16 16">
@@ -68,11 +85,30 @@
 			</div>
 		</header>
 
+		<!-- Drawer overlay (mobile) -->
+		<div id="drawerOverlay" class="drawer-overlay" onclick="closeMobileDrawer()"></div>
+
 		<!-- Main Content -->
 		<main class="flex flex-1 overflow-hidden">
-			<!-- Left Panel - Configuration -->
+			<!-- Left Panel - Configuration (becomes slide-in drawer on mobile) -->
 			<aside class="w-96 min-w-96 bg-cyber-bg-secondary border-r border-cyber-accent/20 overflow-y-auto p-4 flex flex-col gap-4">
 				
+				<!-- Drawer header (mobile only) -->
+				<div class="drawer-close-bar">
+					<div class="flex items-center gap-2">
+						<svg class="w-4 h-4 text-cyber-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+						</svg>
+						<span class="text-sm font-bold text-cyber-accent uppercase tracking-wider">Configuration</span>
+					</div>
+					<button type="button" onclick="closeMobileDrawer()"
+							class="w-8 h-8 flex items-center justify-center rounded-lg bg-cyber-elevated border border-cyber-accent/20 text-gray-400 hover:text-cyber-accent hover:border-cyber-accent transition-all">
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+						</svg>
+					</button>
+				</div>
+
 				<!-- Target Configuration -->
 				<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl overflow-hidden hover:border-cyber-accent/40 transition-colors">
 					<!-- Header with tabs -->
@@ -105,19 +141,15 @@
 							Start Check
 						</button>
 						<div class="grid grid-cols-2 gap-3">
-							<button type="button" id="detectWafBtn" onclick="detectWAF()"
-									class="border-2 border-cyber-accent text-cyber-accent py-2.5 rounded-lg hover:bg-cyber-accent hover:text-cyber-bg transition-all uppercase text-xs font-bold tracking-wide">
-								Detect WAF
+							<button type="button" id="batchTestBtn" onclick="showBatchModal()"
+									class="border-2 border-cyber-success text-cyber-success py-2.5 rounded-lg hover:bg-cyber-success hover:text-cyber-bg transition-all uppercase text-xs font-bold tracking-wide">
+								Batch Test
 							</button>
 							<button type="button" id="httpManipulationBtn" onclick="testHTTPManipulation()"
 									class="border-2 border-cyber-warning text-cyber-warning py-2.5 rounded-lg hover:bg-cyber-warning hover:text-cyber-bg transition-all uppercase text-xs font-bold tracking-wide">
 								HTTP Tests
 							</button>
 						</div>
-						<button type="button" id="batchTestBtn" onclick="showBatchModal()"
-								class="w-full border-2 border-cyber-success text-cyber-success py-2.5 rounded-lg hover:bg-cyber-success hover:text-cyber-bg transition-all uppercase text-xs font-bold tracking-wide mt-3">
-							Batch Test
-						</button>
 					</div>
 					
 					<!-- Advanced Panel -->
@@ -311,16 +343,12 @@
 							<!-- Features Grid -->
 							<div class="grid grid-cols-2 gap-3 mb-4">
 								<div class="bg-cyber-elevated/50 border border-cyber-accent/10 rounded-lg p-3">
-									<div class="text-cyber-accent text-xs font-bold uppercase mb-1">Detect WAF</div>
-									<p class="text-[11px] text-gray-400">Auto-detect which WAF is protecting your target</p>
+									<div class="text-cyber-success text-xs font-bold uppercase mb-1">Batch Test</div>
+									<p class="text-[11px] text-gray-400">Test multiple URLs at once (up to 100)</p>
 								</div>
 								<div class="bg-cyber-elevated/50 border border-cyber-accent/10 rounded-lg p-3">
 									<div class="text-cyber-warning text-xs font-bold uppercase mb-1">HTTP Tests</div>
 									<p class="text-[11px] text-gray-400">Test WAF bypass via headers & methods</p>
-								</div>
-								<div class="bg-cyber-elevated/50 border border-cyber-accent/10 rounded-lg p-3">
-									<div class="text-cyber-success text-xs font-bold uppercase mb-1">Batch Test</div>
-									<p class="text-[11px] text-gray-400">Test multiple URLs at once (up to 100)</p>
 								</div>
 								<div class="bg-cyber-elevated/50 border border-cyber-accent/10 rounded-lg p-3">
 									<div class="text-blue-400 text-xs font-bold uppercase mb-1">False Positive</div>
@@ -555,15 +583,22 @@
 										</div>
 									</div>
 								</div>
-								<div id="configEditor" class="flex-1 flex flex-col overflow-hidden" style="display: none;">
-									<div class="p-4 border-b border-cyber-accent/20 bg-cyber-elevated/30">
-										<div class="flex items-center justify-between">
-											<div class="flex items-center gap-3">
-												<input type="text" id="configCategoryName" 
-													   class="bg-transparent border-none text-lg font-bold text-white focus:outline-none focus:ring-0 w-auto"
-													   placeholder="Category Name" />
-												<span id="configCategoryBadge" class="px-2 py-0.5 text-xs rounded-full bg-cyber-accent/20 text-cyber-accent">Default</span>
-											</div>
+							<div id="configEditor" class="flex-1 flex flex-col overflow-hidden" style="display: none;">
+								<div class="p-4 border-b border-cyber-accent/20 bg-cyber-elevated/30">
+									<div class="flex items-center justify-between">
+										<div class="flex items-center gap-3">
+											<!-- Mobile back button -->
+											<button type="button" onclick="configGoBack()"
+													class="config-back-btn items-center justify-center w-8 h-8 -ml-1 rounded-lg text-gray-400 hover:text-cyber-accent hover:bg-cyber-elevated transition-all shrink-0">
+												<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+												</svg>
+											</button>
+											<input type="text" id="configCategoryName" 
+												   class="bg-transparent border-none text-lg font-bold text-white focus:outline-none focus:ring-0 w-auto"
+												   placeholder="Category Name" />
+											<span id="configCategoryBadge" class="px-2 py-0.5 text-xs rounded-full bg-cyber-accent/20 text-cyber-accent">Default</span>
+										</div>
 											<div class="flex items-center gap-2">
 												<button type="button" onclick="resetCategoryToDefault()" id="configResetBtn"
 														class="text-xs px-3 py-1.5 border border-gray-500 text-gray-400 rounded-lg hover:bg-gray-600 transition-all" style="display: none;">
