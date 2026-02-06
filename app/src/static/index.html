@@ -280,7 +280,10 @@
 									<div class="absolute inset-0 w-8 h-8 border-3 border-cyber-accent border-t-transparent rounded-full animate-spin"></div>
 								</div>
 								<div>
-									<span id="progressText" class="text-sm font-bold text-white block">Running tests...</span>
+									<div class="flex items-center gap-2 flex-wrap">
+										<span id="progressText" class="text-sm font-bold text-white">Running tests...</span>
+										<span id="progressSlowWarning" class="text-xs text-orange-400 font-semibold hidden"></span>
+									</div>
 									<span id="progressCategory" class="text-xs text-cyber-accent">Initializing...</span>
 								</div>
 							</div>

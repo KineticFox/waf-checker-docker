@@ -251,54 +251,381 @@ function getStatusClass(status, is_redirect, falsePositiveMode = false) {
 	return 'status-gray';
 }
 
+function renderAnalyticsCards(results, falsePositiveMode = false) {
+	if (!results || !results.length) return '';
+
+	const totalTests = results.length;
+	const bypassedTests = results.filter(r => {
+		const s = parseInt(String(r.status), 10);
+		return s === 200 || s === 500;
+	}).length;
+	const bypassRate = totalTests > 0 ? (bypassedTests / totalTests) * 100 : 0;
+	const wafEffectiveness = Math.max(0, 100 - bypassRate);
+
+	// Response time stats
+	let totalTime = 0, slowCount = 0, minTime = Infinity, maxTime = 0;
+	for (const r of results) {
+		const rt = r.responseTime || 0;
+		totalTime += rt;
+		if (rt >= SLOW_RESPONSE_THRESHOLD) slowCount++;
+		if (rt < minTime) minTime = rt;
+		if (rt > maxTime) maxTime = rt;
+	}
+	const avgTime = Math.round(totalTime / totalTests);
+	if (minTime === Infinity) minTime = 0;
+
+	// Risk level
+	let riskLevel;
+	if (bypassRate > 75) riskLevel = 'Critical';
+	else if (bypassRate > 50) riskLevel = 'High';
+	else if (bypassRate > 25) riskLevel = 'Medium';
+	else riskLevel = 'Low';
+
+	const riskColors = {
+		'Critical': 'bg-cyber-danger/15 border-cyber-danger/30 text-cyber-danger',
+		'High': 'bg-cyber-warning/15 border-cyber-warning/30 text-cyber-warning',
+		'Medium': 'bg-blue-500/15 border-blue-500/30 text-blue-400',
+		'Low': 'bg-cyber-success/15 border-cyber-success/30 text-cyber-success',
+	};
+	const riskStyle = riskColors[riskLevel] || riskColors['Low'];
+
+	// Avg time color
+	let avgColor = 'text-cyber-success';
+	if (avgTime >= SLOW_RESPONSE_THRESHOLD) avgColor = 'text-red-400';
+	else if (avgTime >= 1000) avgColor = 'text-orange-400';
+	else if (avgTime >= 500) avgColor = 'text-yellow-400';
+
+	return `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+		<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-4 text-center">
+			<div class="text-2xl font-bold text-white mb-1">${totalTests}</div>
+			<div class="text-[10px] text-gray-400 uppercase tracking-wider">Total Tests</div>
+		</div>
+		<div class="bg-cyber-card border ${bypassedTests > 0 ? 'border-cyber-danger/30' : 'border-cyber-success/30'} rounded-xl p-4 text-center">
+			<div class="text-2xl font-bold ${bypassedTests > 0 ? 'text-cyber-danger' : 'text-cyber-success'} mb-1">${bypassedTests}</div>
+			<div class="text-[10px] text-gray-400 uppercase tracking-wider">Bypassed</div>
+		</div>
+		<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-4 text-center">
+			<div class="text-2xl font-bold ${wafEffectiveness < 75 ? 'text-cyber-warning' : 'text-cyber-success'} mb-1">${Math.round(wafEffectiveness)}%</div>
+			<div class="text-[10px] text-gray-400 uppercase tracking-wider">WAF Effectiveness</div>
+		</div>
+		<div class="bg-cyber-card border ${riskStyle} rounded-xl p-4 text-center">
+			<div class="text-lg font-bold mb-1">${riskLevel}</div>
+			<div class="text-[10px] text-gray-400 uppercase tracking-wider">Risk Level</div>
+		</div>
+		<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-2 text-center">
+			<div class="text-base font-bold ${avgColor} font-mono">${avgTime}<span class="text-[10px] font-normal">ms</span></div>
+			<div class="text-[9px] text-gray-400 uppercase tracking-wide">Avg Response</div>
+		</div>
+		<div class="bg-cyber-card border border-cyan-500/20 rounded-xl p-2 text-center">
+			<div class="text-base font-bold text-cyan-400 font-mono">${minTime}<span class="text-[10px] font-normal">ms</span></div>
+			<div class="text-[9px] text-gray-400 uppercase tracking-wide">Fastest</div>
+		</div>
+		<div class="bg-cyber-card border border-purple-500/20 rounded-xl p-2 text-center">
+			<div class="text-base font-bold text-purple-400 font-mono">${maxTime}<span class="text-[10px] font-normal">ms</span></div>
+			<div class="text-[9px] text-gray-400 uppercase tracking-wide">Slowest</div>
+		</div>
+		<div class="bg-cyber-card border ${slowCount > 0 ? 'border-orange-500/30' : 'border-gray-500/20'} rounded-xl p-2 text-center">
+			<div class="text-base font-bold ${slowCount > 0 ? 'text-orange-400' : 'text-gray-500'} font-mono">${slowCount}</div>
+			<div class="text-[9px] text-gray-400 uppercase tracking-wide">Slow (>${SLOW_RESPONSE_THRESHOLD/1000}s)</div>
+		</div>
+	</div>`;
+}
+
 function renderSummary(results, falsePositiveMode = false) {
 	if (!results || !results.length) return '';
 	const statusCounter = {};
-	for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
+	let totalResponseTime = 0;
+	let slowRequestCount = 0;
+	let minTime = Infinity;
+	let maxTime = 0;
+
+	for (const r of results) {
+		statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
+		const rt = r.responseTime || 0;
+		totalResponseTime += rt;
+		if (rt >= SLOW_RESPONSE_THRESHOLD) slowRequestCount++;
+		if (rt < minTime) minTime = rt;
+		if (rt > maxTime) maxTime = rt;
+	}
+
 	const totalRequests = results.length;
-	
+	const avgTime = totalRequests > 0 ? Math.round(totalResponseTime / totalRequests) : 0;
+	if (minTime === Infinity) minTime = 0;
+
+	// Test analytics
+	const bypassedTests = results.filter(r => { const s = parseInt(String(r.status), 10); return s === 200 || s === 500; }).length;
+	const bypassRate = totalRequests > 0 ? (bypassedTests / totalRequests) * 100 : 0;
+	const wafEffectiveness = Math.max(0, 100 - bypassRate);
+	let riskLevel;
+	if (bypassRate > 75) riskLevel = 'Critical';
+	else if (bypassRate > 50) riskLevel = 'High';
+	else if (bypassRate > 25) riskLevel = 'Medium';
+	else riskLevel = 'Low';
+
+	const riskColors = {
+		'Critical': 'bg-cyber-danger/15 border-cyber-danger/30 text-cyber-danger',
+		'High': 'bg-cyber-warning/15 border-cyber-warning/30 text-cyber-warning',
+		'Medium': 'bg-blue-500/15 border-blue-500/30 text-blue-400',
+		'Low': 'bg-cyber-success/15 border-cyber-success/30 text-cyber-success',
+	};
+	const riskStyle = riskColors[riskLevel] || riskColors['Low'];
+
+	// Avg time color
+	let avgColor = 'text-cyber-success';
+	let avgBg = 'bg-cyber-success/15 border-cyber-success/30';
+	if (avgTime >= SLOW_RESPONSE_THRESHOLD) { avgColor = 'text-red-400'; avgBg = 'bg-red-500/15 border-red-500/30'; }
+	else if (avgTime >= 1000) { avgColor = 'text-orange-400'; avgBg = 'bg-orange-500/15 border-orange-500/30'; }
+	else if (avgTime >= 500) { avgColor = 'text-yellow-400'; avgBg = 'bg-yellow-500/15 border-yellow-500/30'; }
+
 	let html = `<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-4 mb-4">
 		<div class="flex items-center justify-between mb-3">
 			<h4 class="text-sm font-bold text-white uppercase tracking-wider">Results Summary</h4>
 			<span class="text-xs text-gray-400">${totalRequests} total tests</span>
 		</div>
-		<div class="space-y-2">
-			<label class="flex items-center gap-3 p-2 bg-cyber-elevated/50 rounded-lg cursor-pointer hover:bg-cyber-elevated transition-colors">
-				<input type="checkbox" id="statusSelectAll" checked class="w-4 h-4 accent-cyber-accent shrink-0" />
-				<span class="text-sm font-semibold text-white flex-1">All Results</span>
-				<span class="px-2 py-0.5 bg-cyber-accent/20 text-cyber-accent text-xs font-bold rounded">${totalRequests}</span>
+
+		<!-- Test Results + Response Time Stats -->
+		<div class="grid grid-cols-4 gap-2 mb-2">
+			<div class="p-2.5 rounded-lg border ${riskStyle} text-center">
+				<div class="text-lg font-bold mb-0.5">${riskLevel}</div>
+				<div class="text-[10px] text-gray-400 uppercase tracking-wide">Risk Level</div>
+			</div>
+			<div class="p-2.5 rounded-lg border bg-cyber-accent/10 border-cyber-accent/20 text-center">
+				<div class="text-lg font-bold ${wafEffectiveness < 75 ? 'text-cyber-warning' : 'text-cyber-success'} font-mono">${Math.round(wafEffectiveness)}%</div>
+				<div class="text-[10px] text-gray-400 uppercase tracking-wide">WAF Effectiveness</div>
+			</div>
+			<div class="p-2.5 rounded-lg border bg-cyber-elevated/50 border-gray-600/30 text-center">
+				<div class="text-lg font-bold text-white font-mono">${totalRequests}</div>
+				<div class="text-[10px] text-gray-400 uppercase tracking-wide">Total Tests</div>
+			</div>
+			<div class="p-2.5 rounded-lg border ${bypassedTests > 0 ? 'bg-cyber-danger/15 border-cyber-danger/30' : 'bg-cyber-success/15 border-cyber-success/30'} text-center">
+				<div class="text-lg font-bold ${bypassedTests > 0 ? 'text-cyber-danger' : 'text-cyber-success'} font-mono">${bypassedTests}</div>
+				<div class="text-[10px] text-gray-400 uppercase tracking-wide">Bypassed</div>
+			</div>
+		</div>
+		<div class="grid grid-cols-4 gap-2 mb-3">
+			<div class="p-1.5 rounded-lg border ${avgBg} text-center">
+				<div class="text-sm font-bold ${avgColor} font-mono">${avgTime}<span class="text-[9px] font-normal">ms</span></div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Avg Response</div>
+			</div>
+			<div class="p-1.5 rounded-lg border bg-cyan-500/10 border-cyan-500/20 text-center">
+				<div class="text-sm font-bold text-cyan-400 font-mono">${minTime}<span class="text-[9px] font-normal">ms</span></div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Fastest</div>
+			</div>
+			<div class="p-1.5 rounded-lg border bg-purple-500/10 border-purple-500/20 text-center">
+				<div class="text-sm font-bold text-purple-400 font-mono">${maxTime}<span class="text-[9px] font-normal">ms</span></div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Slowest</div>
+			</div>
+			<div class="p-1.5 rounded-lg border ${slowRequestCount > 0 ? 'bg-orange-500/15 border-orange-500/30' : 'bg-gray-500/10 border-gray-500/20'} text-center">
+				<div class="text-sm font-bold ${slowRequestCount > 0 ? 'text-orange-400' : 'text-gray-500'} font-mono">${slowRequestCount}</div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Slow (>${SLOW_RESPONSE_THRESHOLD/1000}s)</div>
+			</div>
+		</div>
+
+		<!-- Status Filter -->
+		<h5 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Filter by Status Code</h5>
+		<div class="flex flex-wrap gap-2 items-center">
+			<label class="inline-flex items-center gap-2 px-3 py-1.5 bg-cyber-elevated/50 rounded-lg cursor-pointer hover:bg-cyber-elevated transition-colors border border-cyber-accent/20">
+				<input type="checkbox" id="statusSelectAll" checked class="w-3.5 h-3.5 accent-cyber-accent shrink-0" />
+				<span class="text-xs font-semibold text-white">All</span>
+				<span class="px-1.5 py-0.5 bg-cyber-accent/20 text-cyber-accent text-[10px] font-bold rounded">${totalRequests}</span>
 			</label>`;
 	
-	for (const code of Object.keys(statusCounter).sort()) {
+	const sortedCodes = Object.keys(statusCounter).sort();
+	for (const code of sortedCodes) {
 		const percent = totalRequests ? (statusCounter[code] / totalRequests) * 100 : 0;
 		const codeNum = parseInt(code, 10);
 		let colorClass = 'bg-gray-500';
 		let textClass = 'text-gray-400';
+		let dotColor = 'bg-gray-400';
+		let pillBg = 'bg-gray-500/15 border-gray-500/30';
 		
 		if (falsePositiveMode) {
-			if (codeNum >= 200 && codeNum < 300) { colorClass = 'bg-cyber-success'; textClass = 'text-cyber-success'; }
-			else if (codeNum === 403) { colorClass = 'bg-cyber-danger'; textClass = 'text-cyber-danger'; }
-			else if (codeNum >= 400 && codeNum < 500) { colorClass = 'bg-cyber-warning'; textClass = 'text-cyber-warning'; }
+			if (codeNum >= 200 && codeNum < 300) { colorClass = 'bg-cyber-success'; textClass = 'text-cyber-success'; dotColor = 'bg-cyber-success'; pillBg = 'bg-cyber-success/10 border-cyber-success/30'; }
+			else if (codeNum === 403) { colorClass = 'bg-cyber-danger'; textClass = 'text-cyber-danger'; dotColor = 'bg-cyber-danger'; pillBg = 'bg-cyber-danger/10 border-cyber-danger/30'; }
+			else if (codeNum >= 300 && codeNum < 400) { colorClass = 'bg-orange-500'; textClass = 'text-orange-400'; dotColor = 'bg-orange-400'; pillBg = 'bg-orange-500/10 border-orange-500/30'; }
+			else if (codeNum >= 400 && codeNum < 500) { colorClass = 'bg-cyber-warning'; textClass = 'text-cyber-warning'; dotColor = 'bg-cyber-warning'; pillBg = 'bg-cyber-warning/10 border-cyber-warning/30'; }
 		} else {
-			if (codeNum === 403) { colorClass = 'bg-cyber-success'; textClass = 'text-cyber-success'; }
-			else if (codeNum >= 200 && codeNum < 300) { colorClass = 'bg-cyber-danger'; textClass = 'text-cyber-danger'; }
-			else if (codeNum >= 400 && codeNum < 500) { colorClass = 'bg-cyber-warning'; textClass = 'text-cyber-warning'; }
+			if (codeNum === 403) { colorClass = 'bg-cyber-success'; textClass = 'text-cyber-success'; dotColor = 'bg-cyber-success'; pillBg = 'bg-cyber-success/10 border-cyber-success/30'; }
+			else if (codeNum >= 200 && codeNum < 300) { colorClass = 'bg-cyber-danger'; textClass = 'text-cyber-danger'; dotColor = 'bg-cyber-danger'; pillBg = 'bg-cyber-danger/10 border-cyber-danger/30'; }
+			else if (codeNum >= 300 && codeNum < 400) { colorClass = 'bg-orange-500'; textClass = 'text-orange-400'; dotColor = 'bg-orange-400'; pillBg = 'bg-orange-500/10 border-orange-500/30'; }
+			else if (codeNum >= 400 && codeNum < 500) { colorClass = 'bg-cyber-warning'; textClass = 'text-cyber-warning'; dotColor = 'bg-cyber-warning'; pillBg = 'bg-cyber-warning/10 border-cyber-warning/30'; }
 		}
 		
 		html += `
-			<label class="flex items-center gap-3 p-2 bg-cyber-elevated/30 rounded-lg cursor-pointer hover:bg-cyber-elevated/50 transition-colors">
-				<input type="checkbox" class="status-filter-checkbox w-4 h-4 accent-cyber-accent shrink-0" data-status="${code}" checked />
-				<span class="text-sm text-gray-300 flex-1">Status ${code}</span>
-				<div class="flex items-center gap-2 flex-1 max-w-[200px]">
-					<div class="flex-1 h-1.5 bg-cyber-bg rounded-full overflow-hidden">
-						<div class="${colorClass} h-full rounded-full" style="width: ${percent.toFixed(1)}%"></div>
-					</div>
-					<span class="px-2 py-0.5 ${colorClass}/20 ${textClass} text-xs font-bold rounded min-w-[40px] text-center">${statusCounter[code]}</span>
-				</div>
+			<label class="inline-flex items-center gap-2 px-3 py-1.5 ${pillBg} rounded-lg cursor-pointer hover:brightness-125 transition-all border">
+				<input type="checkbox" class="status-filter-checkbox w-3.5 h-3.5 accent-cyber-accent shrink-0" data-status="${code}" checked />
+				<span class="w-2 h-2 rounded-full ${dotColor} shrink-0"></span>
+				<span class="text-xs font-bold ${textClass}">${code}</span>
+				<span class="text-[10px] text-gray-500">${percent.toFixed(0)}%</span>
+				<span class="px-1.5 py-0.5 ${colorClass}/20 ${textClass} text-[10px] font-bold rounded">${statusCounter[code]}</span>
 			</label>`;
 	}
 	
 	html += `</div></div>`;
+	return html;
+}
+
+// Slow response threshold in ms
+const SLOW_RESPONSE_THRESHOLD = 2000;
+
+function renderResultRow(r, falsePositiveMode = false) {
+	const statusStr = String(r.status);
+	const isError = statusStr === 'ERR' || statusStr === 'error' || statusStr === 'Error';
+	const codeNum = isError ? NaN : parseInt(statusStr, 10);
+	let statusBg = 'bg-gray-500/20 text-gray-400';
+	let payloadClass = '';
+	let rowBgColor = '';
+	let borderColor = '';
+	
+	if (isError || isNaN(codeNum)) {
+		statusBg = 'bg-orange-500/20 text-orange-400';
+		rowBgColor = 'rgba(249, 115, 22, 0.2)';
+		borderColor = '#f97316';
+	} else if (falsePositiveMode) {
+		if (codeNum >= 200 && codeNum < 300) { 
+			statusBg = 'bg-cyber-success/20 text-cyber-success'; 
+			payloadClass = 'text-cyber-success';
+			rowBgColor = 'rgba(34, 197, 94, 0.2)';
+			borderColor = '#22c55e';
+		}
+		else if (codeNum === 403) { 
+			statusBg = 'bg-cyber-danger/20 text-cyber-danger';
+			rowBgColor = 'rgba(239, 68, 68, 0.2)';
+			borderColor = '#ef4444';
+		}
+		else if (codeNum >= 300 && codeNum < 400) { 
+			statusBg = 'bg-cyber-warning/20 text-cyber-warning';
+			rowBgColor = 'rgba(249, 115, 22, 0.2)';
+			borderColor = '#f97316';
+		}
+		else if (codeNum >= 400 && codeNum < 500 && codeNum !== 403) { 
+			statusBg = 'bg-cyber-warning/20 text-cyber-warning';
+			rowBgColor = 'rgba(249, 115, 22, 0.2)';
+			borderColor = '#f97316';
+		}
+		else {
+			rowBgColor = 'rgba(107, 114, 128, 0.1)';
+			borderColor = '#6b7280';
+		}
+	} else {
+		if (codeNum === 403) { 
+			statusBg = 'bg-cyber-success/20 text-cyber-success'; 
+			payloadClass = 'text-cyber-success';
+			rowBgColor = 'rgba(34, 197, 94, 0.2)';
+			borderColor = '#22c55e';
+		}
+		else if (codeNum >= 200 && codeNum < 300) { 
+			statusBg = 'bg-cyber-danger/20 text-cyber-danger';
+			rowBgColor = 'rgba(239, 68, 68, 0.2)';
+			borderColor = '#ef4444';
+		}
+		else if (codeNum >= 300 && codeNum < 400) { 
+			statusBg = 'bg-cyber-warning/20 text-cyber-warning';
+			rowBgColor = 'rgba(249, 115, 22, 0.2)';
+			borderColor = '#f97316';
+		}
+		else if (codeNum >= 400 && codeNum < 500 && codeNum !== 403) { 
+			statusBg = 'bg-cyber-warning/20 text-cyber-warning';
+			rowBgColor = 'rgba(249, 115, 22, 0.2)';
+			borderColor = '#f97316';
+		}
+		else {
+			rowBgColor = 'rgba(107, 114, 128, 0.1)';
+			borderColor = '#6b7280';
+		}
+	}
+	
+	const responseTime = r.responseTime || 0;
+	const isSlow = responseTime >= SLOW_RESPONSE_THRESHOLD;
+	const rowStyle = `background-color: ${rowBgColor}; border-left: 4px solid ${borderColor};`;
+	
+	let statusTooltip = '';
+	let statusDisplay = r.status;
+	if (!isError && !isNaN(codeNum) && codeNum >= 300 && codeNum < 400) {
+		statusTooltip = `title="Redirect (${codeNum}): The server redirected this request."`;
+		statusDisplay = `${r.status}`;
+	}
+
+	// Response time display with slow indicator
+	let timeHtml;
+	if (isSlow) {
+		timeHtml = `<span class="text-orange-400 font-semibold">${responseTime}ms</span> <span class="inline-flex items-center gap-0.5 ml-1 px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] font-bold rounded border border-orange-500/30" title="Response time exceeds ${SLOW_RESPONSE_THRESHOLD}ms">SLOW</span>`;
+	} else {
+		timeHtml = `${responseTime}ms`;
+	}
+	
+	return `
+		<tr data-status="${r.status}" style="${rowStyle}" class="hover:brightness-110 transition-all">
+			<td class="px-4 py-2.5 text-gray-300">${escapeHtml(r.category)}</td>
+			<td class="px-4 py-2.5 text-center">
+				<span class="px-2 py-0.5 bg-cyber-accent/10 text-cyber-accent text-xs font-mono rounded">${r.method}</span>
+			</td>
+			<td class="px-4 py-2.5 text-center">
+				<span class="px-2 py-0.5 ${statusBg} text-xs font-bold rounded cursor-help" ${statusTooltip}>${statusDisplay}</span>
+			</td>
+			<td class="px-4 py-2.5 text-center text-xs text-gray-500 whitespace-nowrap">${timeHtml}</td>
+			<td class="px-4 py-2.5">
+				<code class="text-xs font-mono ${payloadClass} bg-cyber-bg/50 px-2 py-1 rounded break-all">${escapeHtml(r.payload)}</code>
+			</td>
+		</tr>`;
+}
+
+/**
+ * Renders the live results shell (header banner + empty table) used during streaming.
+ * Rows are appended to #liveResultsBody as they arrive.
+ */
+function renderReportHeader(falsePositiveMode = false) {
+	let html = '';
+
+	if (falsePositiveMode) {
+		html += `<div class="flex items-center justify-between mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+			<div class="flex items-center gap-3">
+				<div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+					<svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+					</svg>
+				</div>
+				<div>
+					<h3 class="text-sm font-bold text-blue-400">False Positive Test</h3>
+					<p class="text-xs text-blue-300/70">Testing if legitimate traffic is being blocked by the WAF</p>
+				</div>
+			</div>
+		</div>`;
+	} else {
+		html += `<div class="flex items-center justify-between mb-4 p-4 bg-cyber-card border border-cyber-accent/30 rounded-xl">
+			<div class="flex items-center gap-3">
+				<div class="w-10 h-10 rounded-lg bg-cyber-accent/20 flex items-center justify-center">
+					<svg class="w-5 h-5 text-cyber-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+					</svg>
+				</div>
+				<div>
+					<h3 class="text-sm font-bold text-cyber-accent">Security Test In Progress...</h3>
+					<p class="text-xs text-gray-400" id="liveTestCounter">0 tests completed</p>
+				</div>
+			</div>
+		</div>`;
+	}
+
+	// Live results table
+	html += `<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl overflow-hidden">
+		<div id="liveResultsScroller" class="overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
+			<table class="w-full text-sm" id="resultsTable">
+				<thead class="sticky top-0 z-10">
+					<tr class="bg-cyber-elevated/50 border-b border-cyber-accent/20">
+						<th class="px-5 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Category</th>
+						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">Method</th>
+						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
+						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">Time</th>
+						<th class="px-5 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Payload</th>
+					</tr>
+				</thead>
+				<tbody id="liveResultsBody" class="divide-y divide-cyber-accent/10">
+				</tbody>
+			</table>
+		</div>
+	</div>`;
+	
 	return html;
 }
 
@@ -406,112 +733,17 @@ function renderReport(results, falsePositiveMode = false) {
 			<table class="w-full text-sm" id="resultsTable">
 				<thead>
 					<tr class="bg-cyber-elevated/50 border-b border-cyber-accent/20">
-						<th class="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Category</th>
+						<th class="px-5 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Category</th>
 						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">Method</th>
 						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
 						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">Time</th>
-						<th class="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Payload</th>
+						<th class="px-5 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Payload</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-cyber-accent/10">`;
 	
 	for (const r of results) {
-		const statusStr = String(r.status);
-		const isError = statusStr === 'ERR' || statusStr === 'error' || statusStr === 'Error';
-		const codeNum = isError ? NaN : parseInt(statusStr, 10);
-		let statusBg = 'bg-gray-500/20 text-gray-400';
-		let payloadClass = '';
-		let rowBgColor = ''; // Row background color
-		let borderColor = ''; // Border color
-		
-		// Handle errors first (orange)
-		if (isError || isNaN(codeNum)) {
-			statusBg = 'bg-orange-500/20 text-orange-400';
-			rowBgColor = 'rgba(249, 115, 22, 0.2)'; // orange-500 with 20% opacity
-			borderColor = '#f97316'; // orange-500
-		} else if (falsePositiveMode) {
-			// False positive mode: 200 = good (green), 403 = bad (red)
-			if (codeNum >= 200 && codeNum < 300) { 
-				statusBg = 'bg-cyber-success/20 text-cyber-success'; 
-				payloadClass = 'text-cyber-success';
-				rowBgColor = 'rgba(34, 197, 94, 0.2)'; // green-500 with 20% opacity
-				borderColor = '#22c55e'; // green-500
-			}
-			else if (codeNum === 403) { 
-				statusBg = 'bg-cyber-danger/20 text-cyber-danger';
-				rowBgColor = 'rgba(239, 68, 68, 0.2)'; // red-500 with 20% opacity
-				borderColor = '#ef4444'; // red-500
-			}
-			else if (codeNum >= 300 && codeNum < 400) { 
-				statusBg = 'bg-cyber-warning/20 text-cyber-warning';
-				rowBgColor = 'rgba(249, 115, 22, 0.2)'; // orange-500 with 20% opacity
-				borderColor = '#f97316'; // orange-500
-			}
-			else if (codeNum >= 400 && codeNum < 500 && codeNum !== 403) { 
-				statusBg = 'bg-cyber-warning/20 text-cyber-warning';
-				rowBgColor = 'rgba(249, 115, 22, 0.2)'; // orange-500 with 20% opacity
-				borderColor = '#f97316'; // orange-500
-			}
-			else {
-				// Other status codes (gray)
-				rowBgColor = 'rgba(107, 114, 128, 0.1)'; // gray-500 with 10% opacity
-				borderColor = '#6b7280'; // gray-500
-			}
-		} else {
-			// Normal mode: 403 = good (green), 200 = bad (red)
-			if (codeNum === 403) { 
-				statusBg = 'bg-cyber-success/20 text-cyber-success'; 
-				payloadClass = 'text-cyber-success';
-				rowBgColor = 'rgba(34, 197, 94, 0.2)'; // green-500 with 20% opacity
-				borderColor = '#22c55e'; // green-500
-			}
-			else if (codeNum >= 200 && codeNum < 300) { 
-				statusBg = 'bg-cyber-danger/20 text-cyber-danger';
-				rowBgColor = 'rgba(239, 68, 68, 0.2)'; // red-500 with 20% opacity
-				borderColor = '#ef4444'; // red-500
-			}
-			else if (codeNum >= 300 && codeNum < 400) { 
-				statusBg = 'bg-cyber-warning/20 text-cyber-warning';
-				rowBgColor = 'rgba(249, 115, 22, 0.2)'; // orange-500 with 20% opacity
-				borderColor = '#f97316'; // orange-500
-			}
-			else if (codeNum >= 400 && codeNum < 500 && codeNum !== 403) { 
-				statusBg = 'bg-cyber-warning/20 text-cyber-warning';
-				rowBgColor = 'rgba(249, 115, 22, 0.2)'; // orange-500 with 20% opacity
-				borderColor = '#f97316'; // orange-500
-			}
-			else {
-				// Other status codes (gray)
-				rowBgColor = 'rgba(107, 114, 128, 0.1)'; // gray-500 with 10% opacity
-				borderColor = '#6b7280'; // gray-500
-			}
-		}
-		
-		const responseTime = r.responseTime || 0;
-		const rowStyle = `background-color: ${rowBgColor}; border-left: 4px solid ${borderColor};`;
-		
-		// Add tooltip for redirects
-		let statusTooltip = '';
-		let statusDisplay = r.status;
-		if (!isError && !isNaN(codeNum) && codeNum >= 300 && codeNum < 400) {
-			statusTooltip = `title="Redirect (${codeNum}): The server redirected this request. This could mean the WAF is redirecting to a block page (good) or the server is redirecting normally (requires investigation). Check the Location header to determine if it's a block page."`;
-			statusDisplay = `${r.status}`;
-		}
-		
-		html += `
-			<tr data-status="${r.status}" style="${rowStyle}" class="hover:brightness-110 transition-all">
-				<td class="px-4 py-2.5 text-gray-300">${escapeHtml(r.category)}</td>
-				<td class="px-4 py-2.5 text-center">
-					<span class="px-2 py-0.5 bg-cyber-accent/10 text-cyber-accent text-xs font-mono rounded">${r.method}</span>
-				</td>
-				<td class="px-4 py-2.5 text-center">
-					<span class="px-2 py-0.5 ${statusBg} text-xs font-bold rounded cursor-help" ${statusTooltip}>${statusDisplay}</span>
-				</td>
-				<td class="px-4 py-2.5 text-center text-xs text-gray-500">${responseTime}ms</td>
-				<td class="px-4 py-2.5">
-					<code class="text-xs font-mono ${payloadClass} bg-cyber-bg/50 px-2 py-1 rounded break-all">${escapeHtml(r.payload)}</code>
-				</td>
-			</tr>`;
+		html += renderResultRow(r, falsePositiveMode);
 	}
 	
 	html += `</tbody></table></div></div>`;
@@ -673,6 +905,12 @@ function showProgress() {
 	const progressBar = document.getElementById('progressBar');
 	if (progressBar) {
 		progressBar.classList.remove('hidden');
+	}
+	// Reset slow warning
+	const slowWarningEl = document.getElementById('progressSlowWarning');
+	if (slowWarningEl) {
+		slowWarningEl.textContent = '';
+		slowWarningEl.classList.add('hidden');
 	}
 	// Start indeterminate animation
 	startIndeterminateProgress();
@@ -872,8 +1110,19 @@ async function fetchResults() {
 	let estimatedTotalTests = totalCategories * selectedMethods.length * 5; // Initial estimate
 	let completedTests = 0;
 	let currentCategory = '';
+	let slowCount = 0;
 	
 	updateProgress(0, estimatedTotalTests, `Starting ${totalCategories} categories...`, 'Initializing tests...', 0);
+
+	// Prepare live results table in the DOM
+	const resultsDiv = document.getElementById('results');
+	resultsDiv.innerHTML = renderReportHeader(falsePositiveTest);
+	resultsDiv.scrollIntoView({ behavior: 'smooth' });
+
+	// Get the live tbody and scrollable container to append rows into
+	const liveTbody = document.getElementById('liveResultsBody');
+	const liveCounterEl = document.getElementById('liveTestCounter');
+	const liveScroller = document.getElementById('liveResultsScroller');
 
 	try {
 		// Use streaming endpoint
@@ -933,12 +1182,39 @@ async function fetchResults() {
 							allResults.push(data.result);
 							completedTests = data.completed;
 							
+							// Track slow responses
+							const rt = data.result.responseTime || 0;
+							if (rt >= SLOW_RESPONSE_THRESHOLD) slowCount++;
+							
 							// Update current category from result
 							if (data.result.category && data.result.category !== currentCategory) {
 								currentCategory = data.result.category;
 							}
+
+							// Append row to live table
+							if (liveTbody) {
+								liveTbody.insertAdjacentHTML('beforeend', renderResultRow(data.result, falsePositiveTest));
+								// Auto-scroll the table container to show latest result
+								if (liveScroller) {
+									liveScroller.scrollTop = liveScroller.scrollHeight;
+								}
+							}
+
+							// Update live counter (clean, no slow warning here)
+							if (liveCounterEl) {
+								liveCounterEl.textContent = `${completedTests} / ${estimatedTotalTests} tests completed`;
+							}
+
+							// Update slow warning in progress bar
+							const slowWarningEl = document.getElementById('progressSlowWarning');
+							if (slowWarningEl) {
+								if (slowCount > 0) {
+									slowWarningEl.textContent = `${slowCount} slow response${slowCount > 1 ? 's' : ''} (>${SLOW_RESPONSE_THRESHOLD}ms)`;
+									slowWarningEl.classList.remove('hidden');
+								}
+							}
 							
-							// Update progress immediately
+							// Update progress bar
 							updateProgress(
 								completedTests,
 								estimatedTotalTests,
@@ -969,6 +1245,13 @@ async function fetchResults() {
 		// Finalize progress
 		updateProgress(completedTests, completedTests, 'Complete!', 'All tests completed!');
 
+		// Keep slow warning visible in progress bar at completion
+		const slowWarningEl = document.getElementById('progressSlowWarning');
+		if (slowWarningEl && slowCount > 0) {
+			slowWarningEl.textContent = `${slowCount} slow response${slowCount > 1 ? 's' : ''} (>${SLOW_RESPONSE_THRESHOLD}ms)`;
+			slowWarningEl.classList.remove('hidden');
+		}
+
 		const endTime = new Date().toISOString();
 
 		// Create test session object
@@ -998,8 +1281,8 @@ async function fetchResults() {
 		await new Promise(resolve => setTimeout(resolve, 500));
 		hideProgress();
 
+		// Now render the final full report (replaces live table with summary + filters + table)
 		document.getElementById('results').innerHTML = renderReport(allResults, falsePositiveTest);
-		document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
 		highlightCategoryCheckboxesByResults(allResults, falsePositiveTest);
 
 		// Show export controls
@@ -1510,7 +1793,7 @@ function displayHTTPManipulationResults(data) {
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="bg-cyber-elevated/50 border-b border-cyber-accent/20">
-						<th class="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase">Technique</th>
+						<th class="px-5 py-3 text-left text-xs font-bold text-gray-400 uppercase">Technique</th>
 						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase">Method</th>
 						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase">Status</th>
 						<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase">Result</th>
@@ -1880,6 +2163,18 @@ function exportAsCSV(results) {
 		'URL',
 	];
 
+	// Compute response time stats for summary rows
+	let totalTime = 0, slowCount = 0, minTime = Infinity, maxTime = 0;
+	for (const r of results) {
+		const rt = r.responseTime || 0;
+		totalTime += rt;
+		if (rt >= SLOW_RESPONSE_THRESHOLD) slowCount++;
+		if (rt < minTime) minTime = rt;
+		if (rt > maxTime) maxTime = rt;
+	}
+	if (minTime === Infinity) minTime = 0;
+	const avgTime = results.length > 0 ? Math.round(totalTime / results.length) : 0;
+
 	const csvRows = [
 		headers.join(','),
 		...results.map((result) =>
@@ -1896,6 +2191,18 @@ function exportAsCSV(results) {
 				`"${result.url || ''}"`,
 			].join(','),
 		),
+		'',
+		'"--- Results Summary ---"',
+		`"Risk Level","${(() => { const bypassed = results.filter(r => r.status === 200 || r.status === '200' || r.status === 500 || r.status === '500').length; const rate = results.length > 0 ? (bypassed / results.length) * 100 : 0; if (rate > 75) return 'Critical'; if (rate > 50) return 'High'; if (rate > 25) return 'Medium'; return 'Low'; })()} "`,
+		`"WAF Effectiveness (%)",${results.length > 0 ? Math.round((100 - (results.filter(r => r.status === 200 || r.status === '200' || r.status === 500 || r.status === '500').length / results.length) * 100) * 100) / 100 : 100}`,
+		`"Total Tests",${results.length}`,
+		`"Bypassed",${results.filter(r => r.status === 200 || r.status === '200' || r.status === 500 || r.status === '500').length}`,
+		'',
+		'"--- Response Time Summary ---"',
+		`"Avg Response Time (ms)",${avgTime}`,
+		`"Min Response Time (ms)",${minTime}`,
+		`"Max Response Time (ms)",${maxTime}`,
+		`"Slow Requests (>${SLOW_RESPONSE_THRESHOLD}ms)",${slowCount}`,
 	];
 
 	const content = csvRows.join('\n');
@@ -2225,23 +2532,56 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
                 <span class="risk-badge">${executiveSummary.riskLevel} Risk Level</span>
             </div>
             <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-value">${executiveSummary.overallScore}</div>
-                    <div class="metric-label">Security Score</div>
+                <div class="metric-card" style="border-color: ${getRiskColor(executiveSummary.riskLevel)}40; background: ${getRiskColor(executiveSummary.riskLevel)}15;">
+                    <div class="metric-value" style="font-size: 28px; color: ${getRiskColor(executiveSummary.riskLevel)}">${executiveSummary.riskLevel}</div>
+                    <div class="metric-label">Risk Level</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value" style="color: ${executiveSummary.wafEffectiveness < 75 ? '#ffb347' : '#00ff9d'}">${executiveSummary.wafEffectiveness}%</div>
                     <div class="metric-label">WAF Effectiveness</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value" style="color: ${executiveSummary.bypassedTests > 0 ? '#ff3860' : '#00ff9d'}">${executiveSummary.bypassedTests}</div>
-                    <div class="metric-label">Bypassed Tests</div>
-                </div>
-                <div class="metric-card">
                     <div class="metric-value">${executiveSummary.totalTests}</div>
                     <div class="metric-label">Total Tests</div>
                 </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="color: ${executiveSummary.bypassedTests > 0 ? '#ff3860' : '#00ff9d'}">${executiveSummary.bypassedTests}</div>
+                    <div class="metric-label">Bypassed</div>
+                </div>
             </div>
+            ${(() => {
+				const results = session.results || [];
+				let totalTime = 0, slowCount = 0, minT = Infinity, maxT = 0;
+				for (const r of results) {
+					const rt = r.responseTime || 0;
+					totalTime += rt;
+					if (rt >= 2000) slowCount++;
+					if (rt < minT) minT = rt;
+					if (rt > maxT) maxT = rt;
+				}
+				const avgT = results.length > 0 ? Math.round(totalTime / results.length) : 0;
+				if (minT === Infinity) minT = 0;
+				const avgColor = avgT >= 2000 ? '#ff3860' : avgT >= 1000 ? '#ffb347' : avgT >= 500 ? '#eab308' : '#00ff9d';
+				return `
+            <div class="metrics-grid" style="margin-top: 0;">
+                <div class="metric-card">
+                    <div class="metric-value" style="font-size: 28px; color: ${avgColor}">${avgT}<span style="font-size: 14px; font-weight: 400;">ms</span></div>
+                    <div class="metric-label">Avg Response Time</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="font-size: 28px; color: #00d9ff;">${minT}<span style="font-size: 14px; font-weight: 400;">ms</span></div>
+                    <div class="metric-label">Fastest</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="font-size: 28px; color: #a78bfa;">${maxT}<span style="font-size: 14px; font-weight: 400;">ms</span></div>
+                    <div class="metric-label">Slowest</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="font-size: 28px; color: ${slowCount > 0 ? '#ffb347' : '#6b7280'};">${slowCount}</div>
+                    <div class="metric-label">Slow Requests (&gt;2s)</div>
+                </div>
+            </div>`;
+			})()}
         </div>
 
         ${
@@ -2333,7 +2673,7 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
                             <td><strong>${escapeHtml(result.category || 'N/A')}</strong></td>
                             <td style="font-family: 'JetBrains Mono', monospace; color: #00d9ff;">${escapeHtml(result.method || 'N/A')}</td>
                             <td><span class="status-code" style="color: ${statusClass === 'text-cyber-success' ? '#00ff9d' : statusClass === 'text-cyber-danger' ? '#ff3860' : '#ffb347'};">${escapeHtml(statusStr)}</span></td>
-                            <td style="color: #9ca3af;">${result.responseTime || 0}ms</td>
+                            <td style="color: ${(result.responseTime || 0) >= 2000 ? '#ffb347' : '#9ca3af'}; font-weight: ${(result.responseTime || 0) >= 2000 ? '700' : '400'};">${result.responseTime || 0}ms${(result.responseTime || 0) >= 2000 ? ' <span style="background: rgba(255,179,71,0.2); color: #ffb347; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;">SLOW</span>' : ''}</td>
                             <td><span class="payload">${escapeHtml(result.payload || 'N/A')}</span></td>
                         </tr>
                         `;
@@ -2451,18 +2791,37 @@ function generateExecutiveSummary(results, vulnerabilityScores, wafDetection) {
 		recommendations.push('WAF is performing well, continue monitoring');
 	}
 
+	// Response time stats
+	let totalTime = 0, slowCount = 0, minTime = Infinity, maxTime = 0;
+	for (const r of results) {
+		const rt = r.responseTime || 0;
+		totalTime += rt;
+		if (rt >= SLOW_RESPONSE_THRESHOLD) slowCount++;
+		if (rt < minTime) minTime = rt;
+		if (rt > maxTime) maxTime = rt;
+	}
+	if (minTime === Infinity) minTime = 0;
+	const avgResponseTime = totalTests > 0 ? Math.round(totalTime / totalTests) : 0;
+
 	return {
-		overallScore,
 		riskLevel,
+		wafEffectiveness: Math.round(wafEffectiveness * 100) / 100,
 		totalTests,
 		bypassedTests,
+		overallScore,
 		bypassRate: Math.round(bypassRate * 100) / 100,
-		wafEffectiveness: Math.round(wafEffectiveness * 100) / 100,
 		criticalVulnerabilities,
 		highVulnerabilities,
 		mediumVulnerabilities,
 		lowVulnerabilities,
 		recommendations: recommendations.slice(0, 5),
+		responseTimeStats: {
+			avgResponseTime,
+			minResponseTime: minTime,
+			maxResponseTime: maxTime,
+			slowRequests: slowCount,
+			slowThresholdMs: SLOW_RESPONSE_THRESHOLD,
+		},
 	};
 }
 
@@ -2728,24 +3087,56 @@ function generateAnalyticsHTML(session, vulnerabilityScores, summary) {
 		</div>
 
 		<!-- Stats Grid -->
-		<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-			<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-4 text-center">
-				<div class="text-2xl font-bold text-white mb-1">${summary.totalTests}</div>
-				<div class="text-xs text-gray-400 uppercase tracking-wider">Total Tests</div>
-			</div>
-			<div class="bg-cyber-card border border-cyber-danger/20 rounded-xl p-4 text-center">
-				<div class="text-2xl font-bold ${summary.bypassedTests > 0 ? 'text-cyber-danger' : 'text-cyber-success'} mb-1">${summary.bypassedTests}</div>
-				<div class="text-xs text-gray-400 uppercase tracking-wider">Bypassed</div>
+		<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+			<div class="bg-cyber-card border ${riskStyle} rounded-xl p-4 text-center">
+				<div class="text-lg font-bold mb-1">${summary.riskLevel}</div>
+				<div class="text-xs text-gray-400 uppercase tracking-wider">Risk Level</div>
 			</div>
 			<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-4 text-center">
 				<div class="text-2xl font-bold ${summary.wafEffectiveness < 75 ? 'text-cyber-warning' : 'text-cyber-success'} mb-1">${summary.wafEffectiveness}%</div>
 				<div class="text-xs text-gray-400 uppercase tracking-wider">WAF Effectiveness</div>
 			</div>
-			<div class="bg-cyber-card border ${riskStyle} rounded-xl p-4 text-center">
-				<div class="text-lg font-bold mb-1">${summary.riskLevel}</div>
-				<div class="text-xs text-gray-400 uppercase tracking-wider">Risk Level</div>
+			<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-4 text-center">
+				<div class="text-2xl font-bold text-white mb-1">${summary.totalTests}</div>
+				<div class="text-xs text-gray-400 uppercase tracking-wider">Total Tests</div>
+			</div>
+			<div class="bg-cyber-card border ${summary.bypassedTests > 0 ? 'border-cyber-danger/30' : 'border-cyber-success/30'} rounded-xl p-4 text-center">
+				<div class="text-2xl font-bold ${summary.bypassedTests > 0 ? 'text-cyber-danger' : 'text-cyber-success'} mb-1">${summary.bypassedTests}</div>
+				<div class="text-xs text-gray-400 uppercase tracking-wider">Bypassed</div>
 			</div>
 		</div>
+
+		<!-- Response Time Stats -->
+		${(() => {
+			const rts = summary.responseTimeStats || {};
+			const avg = rts.avgResponseTime || 0;
+			const min = rts.minResponseTime || 0;
+			const max = rts.maxResponseTime || 0;
+			const slow = rts.slowRequests || 0;
+			const threshold = rts.slowThresholdMs || 2000;
+			let avgColor = 'text-cyber-success';
+			if (avg >= threshold) avgColor = 'text-red-400';
+			else if (avg >= 1000) avgColor = 'text-orange-400';
+			else if (avg >= 500) avgColor = 'text-yellow-400';
+			return `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+			<div class="bg-cyber-card border border-cyber-accent/20 rounded-xl p-2 text-center">
+				<div class="text-base font-bold ${avgColor} font-mono">${avg}<span class="text-[10px] font-normal">ms</span></div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Avg Response</div>
+			</div>
+			<div class="bg-cyber-card border border-cyan-500/20 rounded-xl p-2 text-center">
+				<div class="text-base font-bold text-cyan-400 font-mono">${min}<span class="text-[10px] font-normal">ms</span></div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Fastest</div>
+			</div>
+			<div class="bg-cyber-card border border-purple-500/20 rounded-xl p-2 text-center">
+				<div class="text-base font-bold text-purple-400 font-mono">${max}<span class="text-[10px] font-normal">ms</span></div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Slowest</div>
+			</div>
+			<div class="bg-cyber-card border ${slow > 0 ? 'border-orange-500/30' : 'border-gray-500/20'} rounded-xl p-2 text-center">
+				<div class="text-base font-bold ${slow > 0 ? 'text-orange-400' : 'text-gray-500'} font-mono">${slow}</div>
+				<div class="text-[9px] text-gray-400 uppercase tracking-wide">Slow (>${threshold/1000}s)</div>
+			</div>
+		</div>`;
+		})()}
 
 		<!-- Two Column Layout -->
 		<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -2809,7 +3200,7 @@ function generateAnalyticsHTML(session, vulnerabilityScores, summary) {
 					</colgroup>
 					<thead>
 						<tr class="border-b border-cyber-accent/20 bg-cyber-elevated/20">
-							<th class="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider" style="text-align: left;">Category</th>
+							<th class="px-5 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider" style="text-align: left;">Category</th>
 							<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider" style="text-align: center;">Severity</th>
 							<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider" style="text-align: center;">Score</th>
 							<th class="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider" style="text-align: center;">Bypass Rate</th>
