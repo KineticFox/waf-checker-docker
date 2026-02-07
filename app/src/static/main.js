@@ -764,11 +764,16 @@ function renderReport(results, falsePositiveMode = false) {
 // Categories are loaded dynamically from GitHub via the backend
 let PAYLOAD_CATEGORIES = [];
 let payloadCategoriesLoaded = false;
+let payloadLoadRetries = 0;
+const PAYLOAD_MAX_AUTO_RETRIES = 3;
 
 async function loadPayloadCategories() {
 	const container = document.getElementById('categoryCheckboxes');
 	if (container) {
-		container.innerHTML = '<div class="text-center py-3" id="payloadLoadingIndicator"><div class="spinner-border spinner-border-sm text-cyber-accent" role="status"></div> <span class="text-sm text-gray-400">Loading payloads from GitHub...</span></div>';
+		container.innerHTML = `<div class="text-center py-3" id="payloadLoadingIndicator">
+			<div class="spinner-border spinner-border-sm text-cyber-accent" role="status"></div>
+			<span class="text-sm text-gray-400">Loading payloads from GitHub...</span>
+		</div>`;
 	}
 	try {
 		// Check loading status first
@@ -781,10 +786,16 @@ async function loadPayloadCategories() {
 		}
 		
 		const resp = await fetch('/api/payloads');
-		if (!resp.ok) throw new Error('Failed to load payloads');
+		if (!resp.ok) throw new Error(`Failed to load payloads (HTTP ${resp.status})`);
 		const data = await resp.json();
+		
+		if (!data || Object.keys(data).length === 0) {
+			throw new Error('Empty payload data received');
+		}
+		
 		PAYLOAD_CATEGORIES = Object.keys(data);
 		payloadCategoriesLoaded = true;
+		payloadLoadRetries = 0;
 		console.log(`Loaded ${PAYLOAD_CATEGORIES.length} payload categories from GitHub`);
 		renderCategoryCheckboxes();
 		
@@ -793,9 +804,47 @@ async function loadPayloadCategories() {
 		if (indicator) indicator.remove();
 	} catch (e) {
 		console.error('Failed to load payload categories:', e);
-		// Fallback: retry after a delay
-		setTimeout(loadPayloadCategories, 3000);
+		payloadLoadRetries++;
+		
+		if (payloadLoadRetries <= PAYLOAD_MAX_AUTO_RETRIES) {
+			// Auto-retry with increasing delay
+			const delay = payloadLoadRetries * 2000;
+			if (container) {
+				container.innerHTML = `<div class="text-center py-3" id="payloadLoadingIndicator">
+					<div class="spinner-border spinner-border-sm text-cyber-warning" role="status"></div>
+					<span class="text-sm text-cyber-warning">Retry ${payloadLoadRetries}/${PAYLOAD_MAX_AUTO_RETRIES}...</span>
+				</div>`;
+			}
+			setTimeout(loadPayloadCategories, delay);
+		} else {
+			// Show error with retry button
+			showPayloadLoadError(e.message);
+		}
 	}
+}
+
+function showPayloadLoadError(errorMsg) {
+	const container = document.getElementById('categoryCheckboxes');
+	if (!container) return;
+	container.innerHTML = `<div class="text-center py-4 px-3">
+		<svg class="w-8 h-8 text-cyber-danger mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+		</svg>
+		<p class="text-xs text-cyber-danger font-semibold mb-1">Failed to load payloads</p>
+		<p class="text-[10px] text-gray-500 mb-3">${errorMsg || 'Connection to GitHub failed'}</p>
+		<button type="button" onclick="retryLoadPayloads()" 
+				class="px-4 py-2 bg-cyber-accent/20 border border-cyber-accent/40 rounded-lg text-xs font-bold text-cyber-accent hover:bg-cyber-accent/30 transition-all">
+			<svg class="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+			</svg>
+			Retry
+		</button>
+	</div>`;
+}
+
+function retryLoadPayloads() {
+	payloadLoadRetries = 0;
+	loadPayloadCategories();
 }
 
 function renderCategoryCheckboxes() {
@@ -3839,20 +3888,22 @@ async function loadDefaultPayloads() {
 	
 	try {
 		const response = await fetch('/api/payloads');
-		if (response.ok) {
-			defaultPayloads = await response.json();
-			defaultPayloadsLoaded = true;
-			
-			// Update PAYLOAD_CATEGORIES with any new categories from server
-			const serverCategories = Object.keys(defaultPayloads);
-			serverCategories.forEach(cat => {
-				if (!PAYLOAD_CATEGORIES.includes(cat)) {
-					PAYLOAD_CATEGORIES.push(cat);
-				}
-			});
-		}
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		const data = await response.json();
+		if (!data || Object.keys(data).length === 0) throw new Error('Empty data');
+		defaultPayloads = data;
+		defaultPayloadsLoaded = true;
+		
+		// Update PAYLOAD_CATEGORIES with any new categories from server
+		const serverCategories = Object.keys(defaultPayloads);
+		serverCategories.forEach(cat => {
+			if (!PAYLOAD_CATEGORIES.includes(cat)) {
+				PAYLOAD_CATEGORIES.push(cat);
+			}
+		});
 	} catch (e) {
 		console.error('Failed to load default payloads:', e);
+		showAlert('Failed to load payloads from GitHub. Click "Retry" in the Attack Categories panel to try again.', 'Payload Loading Error', 'warning');
 	}
 }
 
