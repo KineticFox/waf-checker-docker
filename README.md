@@ -4,17 +4,12 @@
     <img src="https://zupimages.net/up/20/04/7vtd.png" width="140px" alt="PAPAMICA" />
   </a>
 </p>
-
-<p align="center">
-  <a href="#"><img src="https://readme-typing-svg.herokuapp.com?center=true&vCenter=true&lines=WAF-CHECKER.COM;"></a>
-</p>
+<br>
 <div align="center">
-A powerful web application to test how well your Web Application Firewall (WAF) protects against common attack vectors.
+A powerful web application to test how well your Web Application Firewall (WAF) protects against common attack vectors. But for simple self-hosting and local testing!
 
-→ [waf-checker.com](https://waf-checker.com) ←
 </div>
-
-
+<br>
 
 
 
@@ -204,25 +199,26 @@ app/src/
 
 ## Getting Started
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v18+)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-
-### Local Development
+### Self-hosted deployment
 
 ```bash
 # Clone the repository
-git clone https://github.com/PAPAMICA/waf-checker.git
+git clone https://github.com/KineticFox/waf-checker-docker.git
 cd waf-checker
 
-# Install dependencies
-npm install
+# Build the docker image
+docker build -t waf-checker:1.0.0 .
 
-# Start local dev server
-npx wrangler dev
+#Run the docker container
+docker run -p 8080:8787 waf-checker:1.0.0
+
 ```
 
-Open `http://localhost:8787` in your browser.
+Open `http://localhost:8080` in your browser.
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (v18+)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
 
 ### Deployment to Cloudflare
 
@@ -254,4 +250,5 @@ MIT
 
 ---
 
-Built by [Mickael Asseline](https://github.com/PAPAMICA)
+Built by [Mickael Asseline](https://github.com/PAPAMICA)  
+Containerization by [Felix Kiefer](https://github.com/KineticFox)
