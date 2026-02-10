@@ -1,4 +1,6 @@
 
+[![Docker Image CI](https://github.com/KineticFox/waf-checker-docker/actions/workflows/docker-image.yml/badge.svg)](https://github.com/KineticFox/waf-checker-docker/actions/workflows/docker-image.yml)
+
 <p align="center">
   <a href="https://mickaelasseline.com">
     <img src="https://zupimages.net/up/20/04/7vtd.png" width="140px" alt="PAPAMICA" />
