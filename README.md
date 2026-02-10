@@ -15,6 +15,16 @@ A powerful web application to test how well your Web Application Firewall (WAF) 
 
 ![WAF Checker - Main Interface](./img/1-main.png)
 
+#### Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
+  - [Self hosted deployment](#self-hosted-deployment)
+- [Extending Payloads](#extending-payloads)
+- [License](#license)
+
+
 ## Features
 
 ### Security Testing
@@ -199,7 +209,7 @@ app/src/
 
 ## Getting Started
 
-### Self-hosted deployment
+### Self hosted deployment
 
 ```bash
 # Clone the repository
